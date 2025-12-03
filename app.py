@@ -1,1455 +1,781 @@
-"""
-Laboratorio - Diplomado de mercado de valores y estrategias de inversión
-Aplicación didáctica para aprender sobre riesgos financieros
-Autor: Bolsa de Valores Quito
-Fecha: 2025
-"""
-
 import streamlit as st
-import yfinance as yf
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
+import yfinance as yf
 import plotly.express as px
+import plotly.graph_objects as go
+from scipy.stats import norm
 
-# ============================================================================
-# CONFIGURACIÓN INICIAL
-# ============================================================================
-
+# --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Laboratorio - Diplomado de mercado de valores y estrategias de inversión",
-    page_icon="📊",
+    page_title="Análisis de VaR y Crisis 2008",
     layout="wide",
-    initial_sidebar_state="expanded"
+    page_icon="📉"
 )
 
-# Inicializar session_state para puntos
-if 'puntos_mercado' not in st.session_state:
-    st.session_state.puntos_mercado = 0
-if 'puntos_financiero' not in st.session_state:
-    st.session_state.puntos_financiero = 0
-if 'puntos_macro' not in st.session_state:
-    st.session_state.puntos_macro = 0
+# --- FUNCIONES AUXILIARES ---
 
-# Función para calcular puntos totales
-def calcular_puntos_totales():
-    return st.session_state.puntos_mercado + st.session_state.puntos_financiero + st.session_state.puntos_macro
-
-# Función para determinar nivel
-def obtener_nivel(puntos):
-    if puntos >= 91:
-        return "🏆 Chief Risk Officer", "#FFD700"
-    elif puntos >= 61:
-        return "⭐ Analista Senior", "#C0C0C0"
-    elif puntos >= 31:
-        return "📈 Analista Junior", "#CD7F32"
-    else:
-        return "🌱 Aprendiz de Riesgo", "#90EE90"
-
-# ============================================================================
-# HEADER Y SISTEMA DE PUNTOS GLOBAL
-# ============================================================================
-
-st.title("🎓 Laboratorio - Diplomado de mercado de valores y estrategias de inversión")
-st.markdown("### Aprende sobre gestión de riesgos de forma interactiva")
-
-# Mostrar puntos globales en el sidebar
-with st.sidebar:
-    # Logo de BVQ
-    st.image("Logo BVQ Color.png", use_container_width=True)
-    st.divider()
-    
-    st.header("📊 Tu Progreso")
-    puntos_totales = calcular_puntos_totales()
-    nivel, color = obtener_nivel(puntos_totales)
-    
-    st.metric("Puntos Totales", puntos_totales)
-    st.markdown(f"<h3 style='color: {color};'>{nivel}</h3>", unsafe_allow_html=True)
-    
-    st.divider()
-    st.subheader("Puntos por Módulo:")
-    st.write(f"🌐 Riesgo de Mercado: {st.session_state.puntos_mercado}")
-    st.write(f"💼 Riesgo Financiero: {st.session_state.puntos_financiero}")
-    st.write(f"📈 Riesgo Macroeconómico: {st.session_state.puntos_macro}")
-    
-    st.divider()
-    st.info("💡 **Tip:** Completa todos los juegos para maximizar tus puntos y alcanzar el nivel de Chief Risk Officer")
-
-# ============================================================================
-# PESTAÑA 1: RIESGO DE MERCADO
-# ============================================================================
-
-def tab_riesgo_mercado():
-    st.header("🌐 Riesgo de Mercado")
-    st.markdown("""
-    El **riesgo de mercado** se refiere a la posibilidad de pérdidas en el valor de los activos 
-    debido a cambios en los precios del mercado. La volatilidad (desviación estándar de los retornos) 
-    es una medida clave del riesgo de mercado.
-    """)
-    
-    # Lista de tickers disponibles
-    tickers = ['SPY', 'QQQ', 'TSLA', 'BTC-USD', 'GLD', 'AAPL']
-    
-    # Descargar volatilidades de TODOS los tickers (solo una vez)
-    if 'volatilidades_all' not in st.session_state:
-        with st.spinner("Calculando volatilidades de todos los activos..."):
-            st.session_state.volatilidades_all = {}
-            
-            for ticker in tickers:
-                try:
-                    stock = yf.Ticker(ticker)
-                    data = stock.history(period="1y")
-                    
-                    if not data.empty and len(data) > 10:
-                        precios = data['Close'].copy().dropna()
-                        
-                        if len(precios) > 10:
-                            retornos = precios.pct_change().dropna()
-                            if len(retornos) > 0:
-                                vol_value = retornos.std() * np.sqrt(252) * 100
-                                st.session_state.volatilidades_all[ticker] = float(vol_value.iloc[0]) if hasattr(vol_value, 'iloc') else float(vol_value)
-                except Exception as e:
-                    pass  # Silenciar errores en la carga inicial
-    
-    # Usar las volatilidades globales
-    volatilidades_globales = st.session_state.volatilidades_all
-    
-    # Selección de periodo
-    col1, col2 = st.columns(2)
-    with col1:
-        fecha_fin = datetime.now()
-        fecha_inicio = fecha_fin - timedelta(days=365)
-    
-    # ========================================================================
-    # JUEGO 1: ORDENA LOS ACTIVOS POR VOLATILIDAD
-    # ========================================================================
-    
-    st.subheader("🎯 Juego 1: Ordena los Activos por Volatilidad")
-    st.markdown("Observa los gráficos de precios y ordena los activos de **menor** a **mayor** riesgo (volatilidad).")
-    
-    # Descargar datos
-    with st.spinner("Descargando datos del mercado..."):
-        datos = {}
-        volatilidades = {}
-        
-        # Seleccionar 4 activos aleatorios para este juego
-        import random
-        if 'tickers_juego1' not in st.session_state:
-            st.session_state.tickers_juego1 = random.sample(tickers, 4)
-        
-        tickers_juego = st.session_state.tickers_juego1
-        
-        for ticker in tickers_juego:
-            try:
-                # Descargar datos usando Ticker object (más confiable)
-                stock = yf.Ticker(ticker)
-                data = stock.history(period="1y")  # Último año
-                
-                if not data.empty and len(data) > 10:
-                    # Obtener columna de precios de cierre
-                    precios = data['Close'].copy()
-                    
-                    # Limpiar datos
-                    precios = precios.dropna()
-                    
-                    if len(precios) > 10:
-                        datos[ticker] = precios
-                        retornos = precios.pct_change().dropna()
-                        if len(retornos) > 0:
-                            # Calcular volatilidad anualizada
-                            vol_value = retornos.std() * np.sqrt(252) * 100
-                            volatilidades[ticker] = float(vol_value.iloc[0]) if hasattr(vol_value, 'iloc') else float(vol_value)
-                        st.success(f"✅ {ticker}: {len(precios)} días de datos descargados")
-                    else:
-                        st.warning(f"⚠️ {ticker}: Datos insuficientes ({len(precios)} días)")
-                else:
-                    st.warning(f"⚠️ {ticker}: No se obtuvieron datos")
-            except Exception as e:
-                st.error(f"❌ Error con {ticker}: {str(e)}")
-        
-        if len(datos) == 0:
-            st.error("❌ No se pudo descargar ningún dato. Verifica tu conexión a internet.")
-            st.info("💡 **Sugerencia:** Intenta recargar la página o verifica que tienes acceso a Yahoo Finance.")
-    
-    if len(datos) >= 3:
-        # Crear mapeo de letras (A, B, C, D) a tickers
-        letras = ['A', 'B', 'C', 'D']
-        if 'mapeo_activos' not in st.session_state:
-            st.session_state.mapeo_activos = dict(zip(letras[:len(datos)], list(datos.keys())))
-        
-        mapeo = st.session_state.mapeo_activos
-        
-        # Mostrar gráficos sin revelar el ticker - en formato 2x2
-        st.markdown("**Observa los gráficos de precios:**")
-        
-        letras_list = list(mapeo.keys())
-        
-        # Primera fila - 2 gráficos
-        col1, col2 = st.columns(2)
-        for idx, col in enumerate([col1, col2]):
-            if idx < len(letras_list):
-                letra = letras_list[idx]
-                ticker = mapeo[letra]
-                serie = datos[ticker]
-                
-                with col:
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=serie.index,  # Usar fechas reales
-                        y=serie.values,
-                        mode='lines',
-                        name=f'Activo {letra}',
-                        line=dict(width=2.5, color='#1f77b4')
-                    ))
-                    fig.update_layout(
-                        title=dict(text=f"<b>Activo {letra}</b>", font=dict(size=16)),
-                        height=350,
-                        showlegend=False,
-                        margin=dict(l=50, r=30, t=50, b=50),
-                        xaxis_title="Fecha",
-                        yaxis_title="Precio (USD)",
-                        hovermode='x',
-                        plot_bgcolor='rgba(240,240,240,0.5)',
-                        xaxis=dict(tickformat='%Y-%m-%d')
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-        
-        # Segunda fila - 2 gráficos
-        if len(letras_list) > 2:
-            col3, col4 = st.columns(2)
-            for idx, col in enumerate([col3, col4], start=2):
-                if idx < len(letras_list):
-                    letra = letras_list[idx]
-                    ticker = mapeo[letra]
-                    serie = datos[ticker]
-                    
-                    with col:
-                        fig = go.Figure()
-                        fig.add_trace(go.Scatter(
-                            x=serie.index,  # Usar fechas reales
-                            y=serie.values,
-                            mode='lines',
-                            name=f'Activo {letra}',
-                            line=dict(width=2.5, color='#1f77b4')
-                        ))
-                        fig.update_layout(
-                            title=dict(text=f"<b>Activo {letra}</b>", font=dict(size=16)),
-                            height=350,
-                            showlegend=False,
-                            margin=dict(l=50, r=30, t=50, b=50),
-                            xaxis_title="Fecha",
-                            yaxis_title="Precio (USD)",
-                            hovermode='x',
-                            plot_bgcolor='rgba(240,240,240,0.5)',
-                            xaxis=dict(tickformat='%Y-%m-%d')
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-        
-        # Input del estudiante
-        st.markdown("**Ordena los activos de menor a mayor riesgo:**")
-        orden_estudiante = st.multiselect(
-            "Selecciona en orden (primero el menos riesgoso, último el más riesgoso):",
-            options=list(mapeo.keys()),
-            key="orden_volatilidad"
-        )
-        
-        if st.button("✅ Verificar Orden", key="btn_verificar_volatilidad"):
-            if len(orden_estudiante) == len(datos):
-                # Calcular orden correcto basado en volatilidades
-                orden_correcto = sorted(mapeo.keys(), key=lambda x: volatilidades[mapeo[x]])
-                
-                # Verificar respuesta
-                if orden_estudiante == orden_correcto:
-                    st.success("🎉 ¡Excelente! Has ordenado correctamente los activos por volatilidad.")
-                    st.session_state.puntos_mercado += 10
-                    st.balloons()
-                else:
-                    st.error("❌ El orden no es correcto. Intenta nuevamente.")
-                    st.session_state.puntos_mercado += 2
-                
-                # Mostrar orden correcto y volatilidades
-                st.markdown("### 📊 Orden Correcto:")
-                for letra in orden_correcto:
-                    ticker = mapeo[letra]
-                    st.write(f"**Activo {letra}** ({ticker}): Volatilidad anualizada = {volatilidades[ticker]:.2f}%")
-                
-                # Botón para reiniciar juego
-                if st.button("🔄 Nuevo Juego", key="btn_reset_volatilidad"):
-                    if 'tickers_juego1' in st.session_state:
-                        del st.session_state.tickers_juego1
-                    if 'mapeo_activos' in st.session_state:
-                        del st.session_state.mapeo_activos
-                    st.rerun()
-            else:
-                st.warning("⚠️ Por favor selecciona todos los activos en el orden correcto.")
-    
-    st.divider()
-    
-    # ========================================================================
-    # JUEGO 2: SHOCK DE MERCADO EN PORTAFOLIO
-    # ========================================================================
-    
-    st.subheader("💥 Juego 2: Shock de Mercado en Portafolio")
-    st.markdown("""
-    Construye un portafolio con 3 activos y simula cómo afecta una caída del mercado. 
-    Observa la diferencia entre concentración y diversificación.
-    """)
-    
-    st.markdown("### 🎯 Paso 1: Construye tu Portafolio")
-    
-    # Seleccionar 3 activos
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        activo1 = st.selectbox("Activo 1:", tickers, key="activo1_shock", index=0)
-        if activo1 in volatilidades_globales:
-            st.info(f"📊 **Volatilidad:** {volatilidades_globales[activo1]:.2f}%")
-        else:
-            st.info("📊 **Volatilidad:** N/A")
-        peso1 = st.slider("Peso % Activo 1:", 0, 100, 33, 5, key="peso1_shock")
-    
-    with col2:
-        activo2 = st.selectbox("Activo 2:", tickers, key="activo2_shock", index=1)
-        if activo2 in volatilidades_globales:
-            st.info(f"📊 **Volatilidad:** {volatilidades_globales[activo2]:.2f}%")
-        else:
-            st.info("📊 **Volatilidad:** N/A")
-        peso2 = st.slider("Peso % Activo 2:", 0, 100, 33, 5, key="peso2_shock")
-    
-    with col3:
-        activo3 = st.selectbox("Activo 3:", tickers, key="activo3_shock", index=2)
-        if activo3 in volatilidades_globales:
-            st.info(f"📊 **Volatilidad:** {volatilidades_globales[activo3]:.2f}%")
-        else:
-            st.info("📊 **Volatilidad:** N/A")
-        peso3 = st.slider("Peso % Activo 3:", 0, 100, 34, 5, key="peso3_shock")
-    
-    # Validar que los pesos sumen 100%
-    peso_total = peso1 + peso2 + peso3
-    
-    if peso_total != 100:
-        st.warning(f"⚠️ Los pesos deben sumar 100%. Actualmente suman {peso_total}%")
-    else:
-        st.success(f"✅ Portafolio válido: {peso1}% {activo1} + {peso2}% {activo2} + {peso3}% {activo3}")
-        
-        # Calcular volatilidad ponderada del portafolio
-        activos_port = [activo1, activo2, activo3]
-        pesos_port = [peso1/100, peso2/100, peso3/100]
-        
-        volatilidad_portafolio = 0
-        vol_disponibles = []
-        
-        for activo, peso in zip(activos_port, pesos_port):
-            if activo in volatilidades_globales:
-                volatilidad_portafolio += volatilidades_globales[activo] * peso
-                vol_disponibles.append(volatilidades_globales[activo])
-        
-        if len(vol_disponibles) > 0:
-            vol_max = max(vol_disponibles)
-            vol_min = min(vol_disponibles)
-            
-            st.info(f"""
-            📊 **Estadísticas del Portafolio:**
-            - **Volatilidad ponderada:** {volatilidad_portafolio:.2f}% anualizada
-            - **Activo más volátil:** {vol_max:.2f}%
-            - **Activo menos volátil:** {vol_min:.2f}%
-            - **Rango de volatilidad:** {vol_max - vol_min:.2f}%
-            
-            💡 *La diversificación puede reducir el riesgo si los activos tienen volatilidades diferentes.*
-            """)
-    
-    st.markdown("### 💰 Paso 2: Define tu Inversión y el Shock")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        inversion_inicial = st.number_input("Inversión inicial (USD):", min_value=1000, max_value=1000000, value=10000, step=1000, key="inversion_portafolio")
-    
-    with col2:
-        caida_porcentaje = st.selectbox("Caída simulada del mercado:", ["-3%", "-5%", "-10%", "-15%", "-20%", "-25%"], key="caida_portafolio")
-    
-    if st.button("🎲 Simular Shock en Portafolio", key="btn_shock_portafolio") and peso_total == 100:
-        caida = float(caida_porcentaje.strip('%')) / 100
-        
-        st.markdown("### 📊 Resultados del Shock")
-        
-        # Crear DataFrame con la información del portafolio
-        activos_seleccionados = [activo1, activo2, activo3]
-        pesos = [peso1/100, peso2/100, peso3/100]
-        inversiones = [inversion_inicial * p for p in pesos]
-        
-        # Simular diferentes impactos por activo (basado en volatilidad si está disponible)
-        impactos = []
-        valores_finales = []
-        perdidas = []
-        
-        for i, activo in enumerate(activos_seleccionados):
-            # Si tenemos volatilidad, ajustar el impacto proporcionalmente
-            if activo in volatilidades_globales and len(volatilidades_globales) > 0:
-                vol_promedio = sum(volatilidades_globales.values()) / len(volatilidades_globales)
-                factor_ajuste = volatilidades_globales[activo] / vol_promedio if vol_promedio > 0 else 1.0
-                impacto_activo = caida * factor_ajuste
-            else:
-                impacto_activo = caida
-            
-            impactos.append(impacto_activo)
-            valor_final = inversiones[i] * (1 + impacto_activo)
-            valores_finales.append(valor_final)
-            perdidas.append(inversiones[i] - valor_final)
-        
-        # Calcular totales del portafolio
-        valor_final_portafolio = sum(valores_finales)
-        perdida_total = inversion_inicial - valor_final_portafolio
-        retorno_portafolio = (valor_final_portafolio - inversion_inicial) / inversion_inicial * 100
-        
-        # Mostrar métricas principales
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Inversión Inicial", f"${inversion_inicial:,.2f}")
-        col2.metric("Valor Después del Shock", f"${valor_final_portafolio:,.2f}", f"{retorno_portafolio:.2f}%")
-        col3.metric("Pérdida Total", f"${perdida_total:,.2f}")
-        
-        # Tabla detallada por activo
-        st.markdown("#### 📋 Detalle por Activo")
-        
-        import pandas as pd
-        df_resultados = pd.DataFrame({
-            'Activo': activos_seleccionados,
-            'Peso (%)': [f"{p*100:.1f}%" for p in pesos],
-            'Inversión Inicial': [f"${inv:,.2f}" for inv in inversiones],
-            'Impacto (%)': [f"{imp*100:.2f}%" for imp in impactos],
-            'Valor Final': [f"${vf:,.2f}" for vf in valores_finales],
-            'Pérdida': [f"${p:,.2f}" for p in perdidas]
-        })
-        
-        st.dataframe(df_resultados, use_container_width=True)
-        
-        # Visualización: Gráfico de torta del portafolio
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            fig_inicial = go.Figure(data=[go.Pie(
-                labels=[f"{a} ({p*100:.0f}%)" for a, p in zip(activos_seleccionados, pesos)],
-                values=inversiones,
-                hole=0.4,
-                marker=dict(colors=['#1f77b4', '#ff7f0e', '#2ca02c'])
-            )])
-            fig_inicial.update_layout(
-                title="<b>Portafolio Inicial</b>",
-                height=350,
-                showlegend=True
-            )
-            st.plotly_chart(fig_inicial, use_container_width=True)
-        
-        with col2:
-            fig_final = go.Figure(data=[go.Pie(
-                labels=[f"{a} ({p*100:.0f}%)" for a, p in zip(activos_seleccionados, pesos)],
-                values=valores_finales,
-                hole=0.4,
-                marker=dict(colors=['#d62728', '#ff7f0e', '#2ca02c'])
-            )])
-            fig_final.update_layout(
-                title="<b>Portafolio Después del Shock</b>",
-                height=350,
-                showlegend=True
-            )
-            st.plotly_chart(fig_final, use_container_width=True)
-        
-        # Gráfico de barras comparativo
-        fig_barras = go.Figure()
-        
-        fig_barras.add_trace(go.Bar(
-            name='Inversión Inicial',
-            x=activos_seleccionados,
-            y=inversiones,
-            marker_color='#1f77b4'
-        ))
-        
-        fig_barras.add_trace(go.Bar(
-            name='Valor Después del Shock',
-            x=activos_seleccionados,
-            y=valores_finales,
-            marker_color='#d62728'
-        ))
-        
-        fig_barras.update_layout(
-            title="<b>Impacto por Activo</b>",
-            xaxis_title="Activo",
-            yaxis_title="Valor (USD)",
-            barmode='group',
-            height=350
-        )
-        
-        st.plotly_chart(fig_barras, use_container_width=True)
-        
-        # Mensaje educativo
-        st.info(f"""
-        📚 **Lección de Diversificación:**
-        
-        Tu portafolio está compuesto por:
-        - **{activo1}** ({peso1}%): Pérdida de ${perdidas[0]:,.2f}
-        - **{activo2}** ({peso2}%): Pérdida de ${perdidas[1]:,.2f}
-        - **{activo3}** ({peso3}%): Pérdida de ${perdidas[2]:,.2f}
-        
-        **Pérdida total del portafolio:** ${perdida_total:,.2f} ({retorno_portafolio:.2f}%)
-        
-        💡 **Observación:** Los activos con mayor volatilidad histórica tienden a experimentar 
-        caídas más pronunciadas durante shocks de mercado. Un portafolio diversificado puede 
-        ayudar a mitigar el impacto cuando los activos no se mueven en perfecta sincronía.
-        
-        🎯 **Estrategia:** Considera balancear activos de diferentes clases (acciones, bonos, 
-        materias primas) y sectores para reducir la correlación y el riesgo total del portafolio.
-        """)
-        
-        st.session_state.puntos_mercado += 10
-    
-    # Mostrar puntos de esta pestaña
-    st.divider()
-    st.success(f"🎯 Puntos en Riesgo de Mercado: {st.session_state.puntos_mercado}")
-
-
-# ============================================================================
-# PESTAÑA 2: RIESGO FINANCIERO (ALTMAN Z-SCORE)
-# ============================================================================
-
-def tab_riesgo_financiero():
-    st.header("💼 Riesgo Financiero - Modelo Altman Z-Score")
-    st.markdown("""
-    El **Z-Score de Altman** es un modelo que predice la probabilidad de quiebra de una empresa 
-    basándose en ratios financieros. Desarrollado por Edward Altman, es ampliamente utilizado 
-    para evaluar el riesgo crediticio.
-    
-    **Fórmula:** Z = 0.717×X1 + 0.847×X2 + 3.107×X3 + 0.420×X4 + 0.998×X5
-    
-    Donde:
-    - **X1** = Capital de trabajo / Total de activos (Liquidez)
-    - **X2** = Utilidades retenidas / Total de activos (Historial de rentabilidad)
-    - **X3** = EBIT / Total de activos (Rentabilidad operativa)
-    - **X4** = Valor de mercado del patrimonio / Total de pasivos (Apalancamiento)
-    - **X5** = Ventas / Total de activos (Rotación de activos)
-    """)
-    
-    st.divider()
-    
-    # Entrada de ratios
-    st.subheader("📝 Paso 1: Ingresa los Ratios Financieros")
-    st.markdown("*Nota: Estos valores deben calcularse previamente en Excel desde los estados financieros.*")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        x1 = st.number_input("X1: Capital de trabajo / Total activos", 
-                            min_value=-1.0, max_value=1.0, value=0.15, step=0.01,
-                            help="Mide la liquidez. Valores típicos: 0.10 a 0.30")
-        x2 = st.number_input("X2: Utilidades retenidas / Total activos", 
-                            min_value=-1.0, max_value=1.0, value=0.20, step=0.01,
-                            help="Mide el historial de rentabilidad. Valores típicos: 0.10 a 0.40")
-        x3 = st.number_input("X3: EBIT / Total activos", 
-                            min_value=-1.0, max_value=1.0, value=0.10, step=0.01,
-                            help="Mide la rentabilidad operativa. Valores típicos: 0.05 a 0.20")
-    
-    with col2:
-        x4 = st.number_input("X4: Valor mercado patrimonio / Total pasivos", 
-                            min_value=0.0, max_value=10.0, value=1.5, step=0.1,
-                            help="Mide el apalancamiento. Valores típicos: 0.50 a 3.00")
-        x5 = st.number_input("X5: Ventas / Total activos", 
-                            min_value=0.0, max_value=5.0, value=1.0, step=0.1,
-                            help="Mide la eficiencia de activos. Valores típicos: 0.80 a 2.00")
-    
-    if st.button("🧮 Calcular Z-Score", key="btn_calcular_z"):
-        # Calcular Z-Score con la fórmula correcta
-        z_score = 0.717*x1 + 0.847*x2 + 3.107*x3 + 0.420*x4 + 0.998*x5
-        
-        # Guardar en session_state
-        st.session_state.z_score = z_score
-        st.session_state.ratios = {'X1': x1, 'X2': x2, 'X3': x3, 'X4': x4, 'X5': x5}
-        
-        # Determinar zona según los puntos de corte correctos para Z-Score de Altman
-        if z_score >= 2.90:
-            zona = "Zona Segura 🟢"
-            color = "green"
-            probabilidad_quiebra = "Baja"
-            mensaje = "La empresa tiene baja probabilidad de quiebra según el modelo. Situación financiera saludable."
-        elif z_score >= 1.23:
-            zona = "Zona de Alerta 🟡"
-            color = "orange"
-            probabilidad_quiebra = "Moderada-Alta"
-            mensaje = "Zona gris: la empresa no está claramente quebrando, pero tampoco se la puede considerar sana. Se recomienda análisis más profundo, escenarios y stress tests."
-        else:
-            zona = "Riesgo de Quiebra 🔴"
-            color = "red"
-            probabilidad_quiebra = "Alta"
-            mensaje = "Alta probabilidad de quiebra / problemas financieros serios en el corto plazo. Situación financiera crítica que requiere atención inmediata."
-        
-        # Mostrar resultados
-        st.markdown("---")
-        st.subheader("📊 Resultados del Análisis")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Z-Score", f"{z_score:.2f}")
-        with col2:
-            st.markdown(f"<h3 style='color: {color};'>{zona}</h3>", unsafe_allow_html=True)
-        with col3:
-            st.metric("Prob. Quiebra", probabilidad_quiebra)
-        
-        st.info(mensaje)
-        
-        # Análisis detallado de cada ratio
-        st.markdown("### 🔍 Análisis Detallado por Ratio")
-        
-        # Evaluar cada ratio individualmente
-        analisis_ratios = []
-        
-        # X1 - Liquidez
-        if x1 < 0.10:
-            analisis_ratios.append({
-                'ratio': 'X1 (Liquidez)',
-                'valor': x1,
-                'estado': '🔴 CRÍTICO',
-                'problema': 'Capital de trabajo muy bajo',
-                'recomendacion': 'Mejorar gestión de cobros, reducir inventarios excesivos, renegociar plazos con proveedores'
-            })
-        elif x1 < 0.20:
-            analisis_ratios.append({
-                'ratio': 'X1 (Liquidez)',
-                'valor': x1,
-                'estado': '🟡 MEJORABLE',
-                'problema': 'Capital de trabajo ajustado',
-                'recomendacion': 'Monitorear flujo de caja, optimizar ciclo de conversión de efectivo'
-            })
-        else:
-            analisis_ratios.append({
-                'ratio': 'X1 (Liquidez)',
-                'valor': x1,
-                'estado': '🟢 ADECUADO',
-                'problema': 'N/A',
-                'recomendacion': 'Mantener disciplina en gestión de capital de trabajo'
-            })
-        
-        # X2 - Utilidades Retenidas
-        if x2 < 0.10:
-            analisis_ratios.append({
-                'ratio': 'X2 (Utilidades Retenidas)',
-                'valor': x2,
-                'estado': '🔴 CRÍTICO',
-                'problema': 'Historial de pérdidas o utilidades muy bajas',
-                'recomendacion': 'Reducir dividendos temporalmente, implementar plan de mejora de rentabilidad, revisar estructura de costos'
-            })
-        elif x2 < 0.25:
-            analisis_ratios.append({
-                'ratio': 'X2 (Utilidades Retenidas)',
-                'valor': x2,
-                'estado': '🟡 MEJORABLE',
-                'problema': 'Acumulación de utilidades limitada',
-                'recomendacion': 'Balancear política de dividendos, reinvertir utilidades en crecimiento sostenible'
-            })
-        else:
-            analisis_ratios.append({
-                'ratio': 'X2 (Utilidades Retenidas)',
-                'valor': x2,
-                'estado': '🟢 ADECUADO',
-                'problema': 'N/A',
-                'recomendacion': 'Continuar política de retención de utilidades equilibrada'
-            })
-        
-        # X3 - EBIT / Activos
-        if x3 < 0.05:
-            analisis_ratios.append({
-                'ratio': 'X3 (Rentabilidad Operativa)',
-                'valor': x3,
-                'estado': '🔴 CRÍTICO',
-                'problema': 'Rentabilidad operativa muy baja o negativa',
-                'recomendacion': 'Reestructurar operaciones, reducir costos fijos, mejorar márgenes, revisar estrategia de precios'
-            })
-        elif x3 < 0.10:
-            analisis_ratios.append({
-                'ratio': 'X3 (Rentabilidad Operativa)',
-                'valor': x3,
-                'estado': '🟡 MEJORABLE',
-                'problema': 'Márgenes operativos ajustados',
-                'recomendacion': 'Optimizar eficiencia operativa, buscar economías de escala, mejorar productividad'
-            })
-        else:
-            analisis_ratios.append({
-                'ratio': 'X3 (Rentabilidad Operativa)',
-                'valor': x3,
-                'estado': '🟢 ADECUADO',
-                'problema': 'N/A',
-                'recomendacion': 'Mantener foco en eficiencia operativa y control de costos'
-            })
-        
-        # X4 - Patrimonio / Pasivos
-        if x4 < 0.50:
-            analisis_ratios.append({
-                'ratio': 'X4 (Estructura de Capital)',
-                'valor': x4,
-                'estado': '🔴 CRÍTICO',
-                'problema': 'Exceso de apalancamiento, patrimonio insuficiente',
-                'recomendacion': 'Capitalizar la empresa urgentemente, convertir deuda en equity, reducir pasivos mediante ventas de activos'
-            })
-        elif x4 < 1.00:
-            analisis_ratios.append({
-                'ratio': 'X4 (Estructura de Capital)',
-                'valor': x4,
-                'estado': '🟡 MEJORABLE',
-                'problema': 'Apalancamiento elevado',
-                'recomendacion': 'Reducir deuda gradualmente, fortalecer patrimonio mediante retención de utilidades'
-            })
-        else:
-            analisis_ratios.append({
-                'ratio': 'X4 (Estructura de Capital)',
-                'valor': x4,
-                'estado': '🟢 ADECUADO',
-                'problema': 'N/A',
-                'recomendacion': 'Mantener estructura de capital equilibrada'
-            })
-        
-        # X5 - Ventas / Activos (Rotación)
-        if x5 < 0.80:
-            analisis_ratios.append({
-                'ratio': 'X5 (Rotación de Activos)',
-                'valor': x5,
-                'estado': '🔴 CRÍTICO',
-                'problema': 'Baja eficiencia en el uso de activos',
-                'recomendacion': 'Optimizar uso de activos, vender activos improductivos, mejorar estrategia comercial, aumentar ventas'
-            })
-        elif x5 < 1.20:
-            analisis_ratios.append({
-                'ratio': 'X5 (Rotación de Activos)',
-                'valor': x5,
-                'estado': '🟡 MEJORABLE',
-                'problema': 'Eficiencia de activos moderada',
-                'recomendacion': 'Mejorar productividad de activos, revisar mix de productos, optimizar inventarios'
-            })
-        else:
-            analisis_ratios.append({
-                'ratio': 'X5 (Rotación de Activos)',
-                'valor': x5,
-                'estado': '🟢 ADECUADO',
-                'problema': 'N/A',
-                'recomendacion': 'Mantener eficiencia en rotación de activos'
-            })
-        
-        # Mostrar tabla de análisis
-        import pandas as pd
-        df_analisis = pd.DataFrame(analisis_ratios)
-        st.dataframe(df_analisis, use_container_width=True, hide_index=True)
-        
-        # Recomendaciones prioritarias
-        st.markdown("### 🎯 Plan de Acción Prioritario")
-        
-        ratios_criticos = [r for r in analisis_ratios if '🔴' in r['estado']]
-        ratios_mejorables = [r for r in analisis_ratios if '🟡' in r['estado']]
-        
-        if len(ratios_criticos) > 0:
-            st.error("**⚠️ ATENCIÓN INMEDIATA REQUERIDA:**")
-            for i, ratio in enumerate(ratios_criticos, 1):
-                st.markdown(f"**{i}. {ratio['ratio']}** ({ratio['valor']:.3f})")
-                st.markdown(f"   - **Problema:** {ratio['problema']}")
-                st.markdown(f"   - **Acción:** {ratio['recomendacion']}")
-                st.markdown("")
-        
-        if len(ratios_mejorables) > 0:
-            st.warning("**📋 ACCIONES DE MEJORA:**")
-            for i, ratio in enumerate(ratios_mejorables, 1):
-                st.markdown(f"**{i}. {ratio['ratio']}** ({ratio['valor']:.3f})")
-                st.markdown(f"   - **Observación:** {ratio['problema']}")
-                st.markdown(f"   - **Recomendación:** {ratio['recomendacion']}")
-                st.markdown("")
-        
-        if len(ratios_criticos) == 0 and len(ratios_mejorables) == 0:
-            st.success("**✅ EMPRESA SALUDABLE:**")
-            st.markdown("""
-            Todos los ratios están en rangos adecuados. Recomendaciones generales:
-            - Mantener disciplina financiera
-            - Monitorear cambios en el entorno competitivo
-            - Seguir optimizando eficiencia operativa
-            - Diversificar fuentes de ingresos
-            """)
-        
-        # Mostrar gráfico de contribución de cada ratio
-        contribuciones = {
-            'X1 (Liquidez)': 0.717*x1,
-            'X2 (Util. Retenidas)': 0.847*x2,
-            'X3 (EBIT)': 3.107*x3,
-            'X4 (Valor Mercado/Pasivo)': 0.420*x4,
-            'X5 (Ventas/Activos)': 0.998*x5
-        }
-        
-        fig = go.Figure(data=[
-            go.Bar(x=list(contribuciones.keys()), y=list(contribuciones.values()),
-                  marker_color=['lightblue', 'lightgreen', 'lightyellow', 'lightcoral', 'lightpink'])
-        ])
-        fig.update_layout(
-            title="Contribución de cada componente al Z-Score",
-            xaxis_title="Componente",
-            yaxis_title="Contribución",
-            height=400
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.session_state.puntos_financiero += 5
-    
-    st.divider()
-    
-    # ========================================================================
-    # JUEGO: ENCUENTRA EL RATIO PROBLEMÁTICO
-    # ========================================================================
-    
-    if 'z_score' in st.session_state and 'ratios' in st.session_state:
-        st.subheader("🎯 Juego 1: Encuentra el Ratio Problemático")
-        st.markdown("Identifica cuál es el ratio más crítico que está afectando negativamente el Z'-Score de la empresa.")
-        
-        ratios = st.session_state.ratios
-        
-        # Normalizar ratios para comparación (X4 y X5 tienen escalas diferentes)
-        ratios_normalizados = {
-            'X1': ratios['X1'],
-            'X2': ratios['X2'],
-            'X3': ratios['X3'],
-            'X4': ratios['X4'] / 2,  # Normalizar X4
-            'X5': ratios['X5'] / 2   # Normalizar X5
-        }
-        
-        # Encontrar el ratio más bajo
-        ratio_critico = min(ratios_normalizados, key=ratios_normalizados.get)
-        
-        # Pregunta al estudiante
-        respuesta_estudiante = st.radio(
-            "¿Cuál crees que es el ratio más problemático para esta empresa?",
-            options=[
-                "Liquidez (X1: Capital de trabajo / Activos)",
-                "Utilidades retenidas / Historial (X2: Utilidades retenidas / Activos)",
-                "Rentabilidad operativa (X3: EBIT / Activos)",
-                "Apalancamiento / Estructura de capital (X4: Valor mercado patrimonio / Pasivos)",
-                "Rotación de activos (X5: Ventas / Activos)"
-            ],
-            key="radio_ratio_critico"
-        )
-        
-        mapeo_respuestas = {
-            "Liquidez (X1: Capital de trabajo / Activos)": 'X1',
-            "Utilidades retenidas / Historial (X2: Utilidades retenidas / Activos)": 'X2',
-            "Rentabilidad operativa (X3: EBIT / Activos)": 'X3',
-            "Apalancamiento / Estructura de capital (X4: Valor mercado patrimonio / Pasivos)": 'X4',
-            "Rotación de activos (X5: Ventas / Activos)": 'X5'
-        }
-        
-        if st.button("✅ Verificar Respuesta", key="btn_verificar_ratio"):
-            ratio_elegido = mapeo_respuestas[respuesta_estudiante]
-            
-            if ratio_elegido == ratio_critico:
-                st.success(f"🎉 ¡Correcto! El ratio {ratio_critico} es el más problemático con un valor de {ratios[ratio_critico]:.3f}")
-                st.session_state.puntos_financiero += 10
-                st.balloons()
-            else:
-                st.error(f"❌ Incorrecto. El ratio más problemático es {ratio_critico} con un valor de {ratios[ratio_critico]:.3f}")
-                st.session_state.puntos_financiero += 3
-            
-            # Guardar ratio crítico para el siguiente juego
-            st.session_state.ratio_critico = ratio_critico
-            
-            # Análisis detallado
-            st.markdown("### 📈 Análisis de Ratios:")
-            for ratio, valor in ratios.items():
-                if ratio == ratio_critico:
-                    st.warning(f"**{ratio}**: {valor:.3f} ⚠️ (Ratio crítico)")
-                else:
-                    st.write(f"**{ratio}**: {valor:.3f}")
-        
-        st.divider()
-        
-        # ====================================================================
-        # JUEGO: PROPÓN LA SOLUCIÓN CORRECTA
-        # ====================================================================
-        
-        if 'ratio_critico' in st.session_state:
-            st.subheader("🎯 Juego 2: Propón la Solución Correcta")
-            st.markdown(f"El ratio crítico identificado es **{st.session_state.ratio_critico}**. ¿Cuál es la mejor estrategia para mejorarlo?")
-            
-            ratio_critico = st.session_state.ratio_critico
-            
-            # Definir opciones según el ratio crítico
-            if ratio_critico == 'X1':  # Problema de liquidez
-                st.info("**Problema:** Capital de trabajo insuficiente (baja liquidez)")
-                opciones = [
-                    "Reducir inventarios y mejorar la gestión de cobros para liberar efectivo",
-                    "Refinanciar deuda de corto plazo a largo plazo",
-                    "Aumentar agresivamente la deuda de corto plazo",
-                    "Vender activos fijos estratégicos"
-                ]
-                solucion_correcta = opciones[0]
-                explicacion_correcta = "Reducir inventarios y mejorar cobros aumenta el capital de trabajo sin comprometer la operación."
-                explicacion_incorrecta = {
-                    opciones[1]: "Aunque ayuda, no soluciona el problema de fondo de liquidez operativa.",
-                    opciones[2]: "Esto empeoraría el problema al aumentar pasivos corrientes.",
-                    opciones[3]: "Vender activos estratégicos puede comprometer la operación futura."
-                }
-            
-            elif ratio_critico == 'X2':  # Problema de utilidades retenidas
-                st.info("**Problema:** Bajo historial de rentabilidad acumulada")
-                opciones = [
-                    "Retener más utilidades y reducir dividendos temporalmente",
-                    "Aumentar dividendos para atraer inversores",
-                    "Tomar más deuda para financiar operaciones",
-                    "Vender activos no rentables"
-                ]
-                solucion_correcta = opciones[0]
-                explicacion_correcta = "Retener utilidades aumenta directamente este ratio y fortalece el patrimonio."
-                explicacion_incorrecta = {
-                    opciones[1]: "Esto reduciría aún más las utilidades retenidas.",
-                    opciones[2]: "La deuda no afecta las utilidades retenidas directamente.",
-                    opciones[3]: "Puede ayudar, pero no mejora el historial de rentabilidad."
-                }
-            
-            elif ratio_critico == 'X3':  # Problema de rentabilidad operativa
-                st.info("**Problema:** Baja rentabilidad operativa (EBIT bajo)")
-                opciones = [
-                    "Reducir costos operativos y mejorar eficiencia",
-                    "Tomar más deuda para invertir en marketing",
-                    "Reducir precios para aumentar volumen de ventas",
-                    "Distribuir más dividendos"
-                ]
-                solucion_correcta = opciones[0]
-                explicacion_correcta = "Reducir costos mejora el EBIT directamente sin afectar ingresos."
-                explicacion_incorrecta = {
-                    opciones[1]: "Más deuda aumenta gastos financieros y puede reducir el EBIT.",
-                    opciones[2]: "Reducir precios puede disminuir el margen y empeorar el EBIT.",
-                    opciones[3]: "Los dividendos no afectan el EBIT."
-                }
-            
-            elif ratio_critico == 'X4':  # X4 - Problema de apalancamiento
-                st.info("**Problema:** Excesivo apalancamiento (bajo patrimonio vs pasivos)")
-                opciones = [
-                    "Emitir nuevas acciones para aumentar el patrimonio",
-                    "Tomar más deuda para financiar expansión",
-                    "Aumentar dividendos",
-                    "Reducir el capital social"
-                ]
-                solucion_correcta = opciones[0]
-                explicacion_correcta = "Emitir acciones aumenta el patrimonio y mejora el ratio X4 directamente."
-                explicacion_incorrecta = {
-                    opciones[1]: "Más deuda empeoraría el apalancamiento.",
-                    opciones[2]: "Los dividendos reducen el patrimonio.",
-                    opciones[3]: "Esto empeoraría el problema al reducir patrimonio."
-                }
-            
-            else:  # X5 - Problema de rotación de activos
-                st.info("**Problema:** Baja rotación de activos (ventas insuficientes vs activos)")
-                opciones = [
-                    "Aumentar ventas mediante marketing y expansión comercial",
-                    "Vender activos improductivos o subutilizados",
-                    "Comprar más activos fijos para expandir capacidad",
-                    "Reducir precios drásticamente sin análisis de rentabilidad"
-                ]
-                solucion_correcta = opciones[0]
-                explicacion_correcta = "Aumentar ventas mejora directamente el ratio X5 (Ventas/Activos) sin comprometer la base de activos."
-                explicacion_incorrecta = {
-                    opciones[1]: "Puede ayudar, pero es mejor aumentar ventas primero antes de reducir capacidad.",
-                    opciones[2]: "Más activos empeorarían el ratio al aumentar el denominador sin garantizar ventas proporcionales.",
-                    opciones[3]: "Reducir precios sin estrategia puede afectar márgenes y rentabilidad (X3)."
-                }
-            
-            # Pregunta al estudiante
-            solucion_estudiante = st.radio(
-                "Selecciona la mejor estrategia:",
-                options=opciones,
-                key="radio_solucion"
-            )
-            
-            if st.button("✅ Verificar Solución", key="btn_verificar_solucion"):
-                if solucion_estudiante == solucion_correcta:
-                    st.success(f"🎉 ¡Excelente decisión! {explicacion_correcta}")
-                    st.session_state.puntos_financiero += 15
-                    st.balloons()
-                else:
-                    st.error(f"❌ No es la mejor opción. {explicacion_incorrecta[solucion_estudiante]}")
-                    st.write(f"💡 **Mejor solución:** {solucion_correcta}")
-                    st.write(f"**Por qué:** {explicacion_correcta}")
-                    st.session_state.puntos_financiero += 5
-        
-        st.divider()
-        
-        # Resumen final
-        st.subheader("📋 Resumen del Análisis")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Z-Score", f"{st.session_state.z_score:.2f}")
-        with col2:
-            if 'ratio_critico' in st.session_state:
-                st.metric("Ratio Crítico", st.session_state.ratio_critico)
-        with col3:
-            st.metric("Puntos Ganados", st.session_state.puntos_financiero)
-
-
-# ============================================================================
-# PESTAÑA 3: RIESGO MACROECONÓMICO
-# ============================================================================
-
-def tab_riesgo_macro():
-    st.header("📈 Riesgo Macroeconómico")
-    st.markdown("""
-    El **riesgo macroeconómico** se refiere a cómo los factores económicos generales (inflación, 
-    tasas de interés, crecimiento económico) afectan el desempeño de las empresas y las decisiones 
-    de inversión.
-    """)
-    
-    st.divider()
-    
-    # Cargar datos automáticamente desde el archivo
+@st.cache_data
+def descargar_datos(tickers, start_date, end_date):
+    """Descarga precios de cierre ajustados de Yahoo Finance."""
     try:
-        archivo_path = "Variables Macroeconómicas.xlsx"
-        df = pd.read_excel(archivo_path)
+        data = yf.download(tickers, start=start_date, end=end_date, progress=False)
         
-        # Detectar columna de fecha (primer columna o columna con 'fecha' en el nombre)
-        columna_fecha = None
-        for col in df.columns:
-            if 'fecha' in col.lower() or 'date' in col.lower() or df[col].dtype == 'datetime64[ns]':
-                columna_fecha = col
-                break
-        
-        if columna_fecha is None:
-            columna_fecha = df.columns[0]  # Usar primera columna
-        
-        # Convertir a datetime
-        df['fecha'] = pd.to_datetime(df[columna_fecha])
-        df = df.sort_values('fecha').reset_index(drop=True)
-        
-        # Identificar columnas numéricas (variables macroeconómicas)
-        columnas_numericas = df.select_dtypes(include=[np.number]).columns.tolist()
-        
-        if len(columnas_numericas) == 0:
-            st.error("❌ No se encontraron variables numéricas en el archivo.")
-            return
-        
-        st.success(f"✅ Datos cargados: {len(df)} registros desde {df['fecha'].min().strftime('%Y-%m')} hasta {df['fecha'].max().strftime('%Y-%m')}")
-        st.info(f"📊 Variables disponibles: {', '.join(columnas_numericas)}")
-        
-        # ====================================================================
-        # SECCIÓN 1: VISUALIZACIÓN DE VARIABLES
-        # ====================================================================
-        
-        st.subheader("📊 Visualización de Variables Macroeconómicas")
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            variable_seleccionada = st.selectbox(
-                "Selecciona la variable a graficar:",
-                options=columnas_numericas,
-                key="var_graficar"
-            )
-        
-        with col2:
-            mostrar_todas = st.checkbox("Mostrar todas las variables", value=False, key="check_todas")
-        
-        if mostrar_todas:
-            # Graficar todas las variables
-            fig = go.Figure()
-            for col in columnas_numericas:
-                fig.add_trace(go.Scatter(
-                    x=df['fecha'],
-                    y=df[col],
-                    mode='lines',
-                    name=col
-                ))
-            fig.update_layout(
-                title='Todas las Variables Macroeconómicas',
-                xaxis_title='Fecha',
-                yaxis_title='Valor',
-                height=500,
-                hovermode='x unified',
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            st.plotly_chart(fig, use_container_width=True)
+        # Si hay múltiples tickers, 'Adj Close' es un nivel del MultiIndex
+        if len(tickers) > 1:
+            if 'Adj Close' in data.columns.levels[0]:
+                data = data['Adj Close']
+            else:
+                data = data['Close']
         else:
-            # Graficar variable seleccionada
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df['fecha'],
-                y=df[variable_seleccionada],
-                mode='lines+markers',
-                name=variable_seleccionada,
-                line=dict(color='blue', width=2),
-                marker=dict(size=4)
-            ))
-            fig.update_layout(
-                title=f'Serie Temporal: {variable_seleccionada}',
-                xaxis_title='Fecha',
-                yaxis_title=variable_seleccionada,
-                height=450,
-                hovermode='x'
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Estadísticas descriptivas
-            with st.expander("📊 Estadísticas Descriptivas"):
-                col1, col2, col3, col4 = st.columns(4)
-                serie = df[variable_seleccionada]
-                col1.metric("Media", f"{serie.mean():.2f}")
-                col2.metric("Mediana", f"{serie.median():.2f}")
-                col3.metric("Desv. Estándar", f"{serie.std():.2f}")
-                col4.metric("Coef. Variación", f"{(serie.std()/serie.mean()*100):.2f}%")
+            # Para un solo ticker, la estructura es diferente
+            if 'Adj Close' in data.columns:
+                data = data[['Adj Close']]
+                data.columns = tickers
+            elif 'Close' in data.columns:
+                data = data[['Close']]
+                data.columns = tickers
         
-        st.divider()
+        return data
+    except Exception as e:
+        st.error(f"Error al descargar datos: {e}")
+        return pd.DataFrame()
+
+def calcular_rendimientos(precios, tipo="log"):
+    """Calcula rendimientos simples o logarítmicos."""
+    if tipo == "log":
+        return np.log(precios / precios.shift(1)).dropna()
+    else:
+        return precios.pct_change().dropna()
+
+def calcular_var_historico(rendimientos, nivel_confianza=0.95):
+    """Calcula el VaR histórico."""
+    return np.percentile(rendimientos, (1 - nivel_confianza) * 100)
+
+def calcular_var_parametrico(rendimientos, nivel_confianza=0.95):
+    """Calcula el VaR paramétrico (distribución normal)."""
+    mu = rendimientos.mean()
+    sigma = rendimientos.std()
+    z = norm.ppf(1 - nivel_confianza)
+    return mu + z * sigma
+
+def calcular_var_portafolio(rendimientos, pesos, nivel_confianza=0.95):
+    """Calcula el VaR de un portafolio usando varianzas-covarianzas."""
+    cov_matrix = rendimientos.cov()
+    var_portafolio = np.dot(pesos.T, np.dot(cov_matrix, pesos))
+    sigma_portafolio = np.sqrt(var_portafolio)
+    mu_portafolio = np.sum(rendimientos.mean() * pesos)
+    z = norm.ppf(1 - nivel_confianza)
+    var_valor = mu_portafolio + z * sigma_portafolio
+    return var_valor, sigma_portafolio, cov_matrix
+
+def calcular_kurtosis_rolling(rendimientos, ventana=60):
+    """Calcula la curtosis rolling de los rendimientos."""
+    from scipy.stats import kurtosis
+    kurtosis_rolling = rendimientos.rolling(window=ventana).apply(lambda x: kurtosis(x, fisher=False), raw=True)
+    return kurtosis_rolling
+
+def calcular_var_rolling(rendimientos, ventana=250, nivel_confianza=0.95):
+    """Calcula el VaR rolling usando percentiles históricos."""
+    var_rolling = rendimientos.rolling(window=ventana).quantile(1 - nivel_confianza)
+    return var_rolling
+
+def calcular_stress_ratio(rendimientos, ventana_sigma=30, ventana_var=250):
+    """Calcula el Stress Ratio: sigma_rolling / |VaR_rolling|."""
+    sigma_rolling = rendimientos.rolling(window=ventana_sigma).std()
+    var_rolling = calcular_var_rolling(rendimientos, ventana=ventana_var)
+    stress_ratio = sigma_rolling / np.abs(var_rolling)
+    return stress_ratio, sigma_rolling, var_rolling
+
+def calcular_ewma_volatilidad(rendimientos, lambda_param=0.94):
+    """Calcula la volatilidad EWMA (Exponentially Weighted Moving Average)."""
+    # Inicializar con la varianza histórica
+    var_inicial = rendimientos.var()
+    ewma_var = [var_inicial]
+    
+    for ret in rendimientos[1:]:
+        nueva_var = lambda_param * ewma_var[-1] + (1 - lambda_param) * (ret ** 2)
+        ewma_var.append(nueva_var)
+    
+    ewma_vol = pd.Series(np.sqrt(ewma_var), index=rendimientos.index)
+    return ewma_vol
+
+def interpretar_kurtosis(kurt_value):
+    """Devuelve interpretación y color según el nivel de kurtosis."""
+    if kurt_value <= 3:
+        return "Normal", "green"
+    elif kurt_value <= 5:
+        return "Colas pesadas comienzan", "yellow"
+    elif kurt_value <= 10:
+        return "⚠️ ALERTA", "orange"
+    else:
+        return "🚨 RIESGO SISTÉMICO INMINENTE", "red"
+
+def interpretar_stress_ratio(sr_value):
+    """Devuelve interpretación y color según el Stress Ratio."""
+    if sr_value < 0.3:
+        return "🟢 Normal", "green"
+    elif sr_value <= 0.6:
+        return "🟡 Tensión moderada", "orange"
+    else:
+        return "🔴 Riesgo sistémico", "red"
+
+# --- INTERFAZ DE USUARIO ---
+
+# Título Principal
+st.title("📉 Análisis de Value at Risk (VaR) y la Burbuja Inmobiliaria 2007–2008")
+st.markdown("""
+Esta aplicación educativa permite explorar el concepto de **Value at Risk (VaR)** y analizar cómo se comportaron 
+los mercados financieros durante la crisis subprime.
+""")
+
+# --- BARRA LATERAL ---
+# Logo en el sidebar
+try:
+    st.sidebar.image("Logo BVQ Color.png", width=250)
+    st.sidebar.markdown("---")
+except:
+    pass
+
+st.sidebar.header("⚙️ Configuración")
+
+# Selección de Fechas
+start_date = st.sidebar.date_input("Fecha de inicio", pd.to_datetime("2004-01-01"))
+end_date = st.sidebar.date_input("Fecha de fin", pd.to_datetime("2025-12-31"))
+
+# Selección de Activos
+tickers_default = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META"]
+tickers = st.sidebar.multiselect("Selecciona los activos", 
+                                 ["SPY", "VNQ", "BAC", "JPM", "C", "GS", "XLF", "IYR",
+                                  "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META"], 
+                                 default=tickers_default)
+
+# Frecuencia
+frecuencia = st.sidebar.selectbox("Frecuencia de datos", ["Diaria", "Semanal", "Mensual"])
+intervalo_map = {"Diaria": "1d", "Semanal": "1wk", "Mensual": "1mo"}
+
+# Descarga de datos
+if not tickers:
+    st.warning("Por favor selecciona al menos un activo.")
+    st.stop()
+
+with st.spinner('Descargando datos de mercado...'):
+    # yfinance no soporta re-sampling directo en la descarga para weekly/monthly de forma robusta con fechas exactas a veces,
+    # pero podemos descargar diario y resamplear nosotros o usar el intervalo de yf.
+    # Para simplicidad y consistencia, descargamos diario y resampleamos si es necesario.
+    datos_raw = descargar_datos(tickers, start_date, end_date)
+    
+    if datos_raw.empty:
+        st.error("No se encontraron datos para los activos seleccionados en el rango de fechas.")
+        st.stop()
+
+    if frecuencia == "Semanal":
+        datos = datos_raw.resample('W').last()
+    elif frecuencia == "Mensual":
+        datos = datos_raw.resample('M').last()
+    else:
+        datos = datos_raw
+
+# --- PESTAÑAS PRINCIPALES ---
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "Introducción", 
+    "Datos y precios", 
+    "VaR univariado", 
+    "VaR de portafolio", 
+    "Burbuja inmobiliaria", 
+    "Indicadores Avanzados de Riesgo",
+    "Actividad"
+])
+
+# --- 1. INTRODUCCIÓN ---
+with tab1:
+    st.header("📘 Introducción al Value at Risk (VaR)")
+    
+    st.markdown("""
+    ### ¿Qué es el VaR?
+    El **Value at Risk (VaR)** es una medida estadística utilizada para cuantificar el nivel de riesgo financiero 
+    dentro de una empresa o cartera de inversiones en un marco de tiempo específico.
+    
+    Básicamente, responde a la pregunta: 
+    > *"¿Cuánto es lo máximo que puedo esperar perder con un nivel de confianza dado (por ejemplo, 95%) en un periodo determinado?"*
+    
+    ### VaR Univariado vs. VaR de Portafolio
+    *   **VaR Univariado:** Se calcula para un solo activo. Analiza la distribución de rendimientos de ese activo individual.
+    *   **VaR de Portafolio:** Considera múltiples activos. Aquí es crucial la **correlación** entre activos. 
+        Si los activos no están perfectamente correlacionados, el riesgo del portafolio (diversificado) suele ser menor 
+        que la suma de los riesgos individuales.
+    
+    ### La Burbuja Inmobiliaria 2007–2008
+    La crisis financiera de 2007-2008 fue desatada por el colapso de la burbuja inmobiliaria en Estados Unidos. 
+    Los bancos habían otorgado hipotecas de alto riesgo (subprime) que luego empaquetaron en productos financieros complejos.
+    
+    Cuando los precios de las viviendas cayeron y los impagos aumentaron, estos activos se volvieron tóxicos, 
+    llevando a la quiebra a grandes instituciones como Lehman Brothers y afectando severamente a bancos como 
+    Bank of America (BAC) y JP Morgan (JPM), así como al sector inmobiliario (VNQ).
+    """)
+
+# --- 2. DATOS Y PRECIOS ---
+with tab2:
+    st.header("📊 Datos Históricos y Precios")
+    
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        tipo_retorno = st.radio("Tipo de rendimientos", ["Logarítmicos", "Simples"])
+        tipo_ret_code = "log" if tipo_retorno == "Logarítmicos" else "simple"
+    
+    # Calcular rendimientos
+    rendimientos = calcular_rendimientos(datos, tipo=tipo_ret_code)
+    
+    st.subheader("Evolución de Precios")
+    fig_precios = px.line(datos, x=datos.index, y=datos.columns, title="Precios Ajustados de Cierre")
+    st.plotly_chart(fig_precios, use_container_width=True)
+    
+    st.subheader("Evolución de Rendimientos")
+    fig_retornos = px.line(rendimientos, x=rendimientos.index, y=rendimientos.columns, title=f"Rendimientos {tipo_retorno}")
+    st.plotly_chart(fig_retornos, use_container_width=True)
+    
+    with st.expander("Ver tabla de precios"):
+        st.dataframe(datos)
+
+# --- 3. VAR UNIVARIADO ---
+with tab3:
+    st.header("📉 VaR Univariado")
+    
+    col_var1, col_var2 = st.columns([1, 3])
+    
+    with col_var1:
+        activo_uni = st.selectbox("Selecciona un activo", tickers)
+        confianza_uni = st.selectbox("Nivel de confianza", [0.95, 0.99])
+        metodo_var = st.radio("Método de cálculo", ["Paramétrico (Normal)", "Histórico"])
+        horizonte = st.number_input("Horizonte temporal (días)", min_value=1, value=1)
+    
+    rets_activo = rendimientos[activo_uni]
+    
+    if metodo_var == "Paramétrico (Normal)":
+        var_val = calcular_var_parametrico(rets_activo, confianza_uni)
+    else:
+        var_val = calcular_var_historico(rets_activo, confianza_uni)
+    
+    # Escalar VaR por horizonte (asumiendo raíz del tiempo para paramétrico, simple para propósitos didácticos)
+    # Nota: Para histórico puro, escalar es más complejo, aquí usamos la regla de raíz de t para simplificar la didáctica
+    var_val_horizonte = var_val * np.sqrt(horizonte)
+    
+    with col_var2:
+        st.metric(label=f"VaR {confianza_uni*100:.0f}% ({horizonte} días)", value=f"{var_val_horizonte:.2%}")
         
-        # ====================================================================
-        # SECCIÓN 2: PRONÓSTICOS CON AUTO-ARIMA Y ETS
-        # ====================================================================
+        st.info(f"""
+        **Interpretación:** 
+        Con un nivel de confianza del {confianza_uni*100:.0f}%, se estima que la pérdida máxima del activo **{activo_uni}** 
+        en un periodo de {horizonte} día(s) no superará el **{abs(var_val_horizonte):.2%}**.
         
-        st.subheader("🔮 Pronósticos con Modelos de Series de Tiempo")
-        st.markdown("""
-        Compara dos modelos de pronóstico y elige el mejor según sus métricas de precisión:
-        - **Auto-ARIMA:** Selecciona automáticamente los mejores parámetros (p,d,q)
-        - **ETS (Error, Trend, Seasonality):** Suavización exponencial con componentes aditivos/multiplicativos
+        En términos monetarios, si inviertes $10,000, hay un {confianza_uni*100:.0f}% de probabilidad de que tu pérdida 
+        no exceda **${10000 * abs(var_val_horizonte):.2f}**.
         """)
         
-        col1, col2 = st.columns(2)
+        # Histograma
+        fig_hist = px.histogram(rets_activo, nbins=50, title=f"Distribución de Rendimientos: {activo_uni}", 
+                                labels={'value': 'Rendimiento'}, opacity=0.7)
+        fig_hist.add_vline(x=var_val, line_dash="dash", line_color="red", annotation_text=f"VaR (1 día): {var_val:.2%}")
+        st.plotly_chart(fig_hist, use_container_width=True)
         
-        with col1:
-            variable_pronostico = st.selectbox(
-                "Variable a pronosticar:",
-                options=columnas_numericas,
-                key="var_pronostico"
-            )
+        # Estadísticas
+        stats_df = pd.DataFrame({
+            "Métrica": ["Media", "Desviación Estándar", "Mínimo", "Máximo"],
+            "Valor": [rets_activo.mean(), rets_activo.std(), rets_activo.min(), rets_activo.max()]
+        })
+        st.table(stats_df.style.format({"Valor": "{:.4%}"}))
+
+# --- 4. VAR DE PORTAFOLIO ---
+with tab4:
+    st.header("💼 VaR de Portafolio (Varianzas-Covarianzas)")
+    
+    activos_port = st.multiselect("Activos del portafolio", tickers, default=tickers)
+    
+    if not activos_port:
+        st.warning("Selecciona activos para el portafolio.")
+    else:
+        col_p1, col_p2 = st.columns([1, 2])
         
-        with col2:
-            horizonte = st.slider(
-                "Horizonte de pronóstico (meses):",
-                min_value=3,
-                max_value=24,
-                value=12,
-                step=1,
-                key="horizonte"
-            )
-        
-        # Preparar datos para el pronóstico
-        serie_pronostico = df[[variable_pronostico]].copy()
-        serie_pronostico.index = df['fecha']
-        serie_pronostico = serie_pronostico[variable_pronostico]
-        
-        # Dividir en train/test (últimos 12 meses para validación)
-        n_test = min(12, len(serie_pronostico) // 4)
-        train = serie_pronostico[:-n_test]
-        test = serie_pronostico[-n_test:]
-        
-        col1, col2 = st.columns(2)
-        
-        # ============================================================
-        # MODELO 1: AUTO-ARIMA
-        # ============================================================
-        
-        with col1:
-            if st.button("📈 Ajustar Auto-ARIMA", key="btn_autoarima"):
-                with st.spinner("Ajustando modelo Auto-ARIMA..."):
-                    try:
-                        from statsmodels.tsa.statespace.sarimax import SARIMAX
-                        from pmdarima import auto_arima
-                        
-                        # Auto-ARIMA para encontrar mejores parámetros
-                        modelo_auto = auto_arima(
-                            train,
-                            seasonal=False,
-                            stepwise=True,
-                            suppress_warnings=True,
-                            error_action='ignore',
-                            max_p=5,
-                            max_q=5,
-                            max_d=2
-                        )
-                        
-                        # Obtener orden óptimo
-                        orden = modelo_auto.order
-                        
-                        # Ajustar SARIMAX con serie completa
-                        modelo_final = SARIMAX(serie_pronostico, order=orden)
-                        resultado = modelo_final.fit(disp=False)
-                        
-                        # Pronóstico
-                        pronostico_arima = resultado.forecast(steps=horizonte)
-                        
-                        # Validación en test set
-                        pred_test = resultado.predict(start=len(train), end=len(serie_pronostico)-1)
-                        rmse_arima = np.sqrt(np.mean((test - pred_test)**2))
-                        aic_arima = resultado.aic
-                        bic_arima = resultado.bic
-                        
-                        # Guardar en session_state
-                        st.session_state.arima_resultado = {
-                            'pronostico': pronostico_arima,
-                            'rmse': rmse_arima,
-                            'aic': aic_arima,
-                            'bic': bic_arima,
-                            'orden': orden
-                        }
-                        
-                        # Graficar
-                        fig = go.Figure()
-                        
-                        # Histórico
-                        fig.add_trace(go.Scatter(
-                            x=serie_pronostico.index,
-                            y=serie_pronostico.values,
-                            mode='lines',
-                            name='Histórico',
-                            line=dict(color='blue', width=2)
-                        ))
-                        
-                        # Pronóstico
-                        fechas_futuras = pd.date_range(
-                            start=serie_pronostico.index[-1] + pd.DateOffset(months=1),
-                            periods=horizonte,
-                            freq='MS'
-                        )
-                        
-                        fig.add_trace(go.Scatter(
-                            x=fechas_futuras,
-                            y=pronostico_arima,
-                            mode='lines+markers',
-                            name='Pronóstico ARIMA',
-                            line=dict(color='red', width=2, dash='dash')
-                        ))
-                        
-                        fig.update_layout(
-                            title=f'Auto-ARIMA{orden} - {variable_pronostico}',
-                            xaxis_title='Fecha',
-                            yaxis_title=variable_pronostico,
-                            height=400,
-                            hovermode='x unified'
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Métricas
-                        st.success("✅ Modelo Auto-ARIMA ajustado exitosamente")
-                        col_a, col_b, col_c = st.columns(3)
-                        col_a.metric("RMSE", f"{rmse_arima:.4f}")
-                        col_b.metric("AIC", f"{aic_arima:.2f}")
-                        col_c.metric("BIC", f"{bic_arima:.2f}")
-                        
-                        st.info(f"📊 **Orden seleccionado:** ARIMA{orden}")
-                        
-                        # Tabla de pronósticos
-                        with st.expander("📋 Ver valores pronosticados"):
-                            df_forecast = pd.DataFrame({
-                                'Fecha': fechas_futuras,
-                                'Pronóstico': pronostico_arima.round(4)
-                            })
-                            st.dataframe(df_forecast, use_container_width=True, hide_index=True)
-                        
-                        st.session_state.puntos_macro += 10
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error al ajustar Auto-ARIMA: {str(e)}")
-                        st.info("💡 Intenta con una serie más larga o verifica que no haya valores faltantes.")
-        
-        # ============================================================
-        # MODELO 2: ETS
-        # ============================================================
-        
-        with col2:
-            if st.button("📊 Ajustar ETS", key="btn_ets"):
-                with st.spinner("Ajustando modelo ETS..."):
-                    try:
-                        from statsmodels.tsa.holtwinters import ExponentialSmoothing
-                        
-                        # Ajustar modelo ETS
-                        modelo_ets = ExponentialSmoothing(
-                            serie_pronostico,
-                            trend='add',
-                            seasonal='add' if len(serie_pronostico) >= 24 else None,
-                            seasonal_periods=12 if len(serie_pronostico) >= 24 else None
-                        )
-                        resultado_ets = modelo_ets.fit()
-                        
-                        # Pronóstico
-                        pronostico_ets = resultado_ets.forecast(steps=horizonte)
-                        
-                        # Validación en test set
-                        pred_test_ets = resultado_ets.predict(start=len(train), end=len(serie_pronostico)-1)
-                        rmse_ets = np.sqrt(np.mean((test - pred_test_ets)**2))
-                        aic_ets = resultado_ets.aic
-                        bic_ets = resultado_ets.bic
-                        
-                        # Guardar en session_state
-                        st.session_state.ets_resultado = {
-                            'pronostico': pronostico_ets,
-                            'rmse': rmse_ets,
-                            'aic': aic_ets,
-                            'bic': bic_ets
-                        }
-                        
-                        # Graficar
-                        fig = go.Figure()
-                        
-                        # Histórico
-                        fig.add_trace(go.Scatter(
-                            x=serie_pronostico.index,
-                            y=serie_pronostico.values,
-                            mode='lines',
-                            name='Histórico',
-                            line=dict(color='blue', width=2)
-                        ))
-                        
-                        # Pronóstico
-                        fechas_futuras = pd.date_range(
-                            start=serie_pronostico.index[-1] + pd.DateOffset(months=1),
-                            periods=horizonte,
-                            freq='MS'
-                        )
-                        
-                        fig.add_trace(go.Scatter(
-                            x=fechas_futuras,
-                            y=pronostico_ets,
-                            mode='lines+markers',
-                            name='Pronóstico ETS',
-                            line=dict(color='green', width=2, dash='dash')
-                        ))
-                        
-                        fig.update_layout(
-                            title=f'ETS - {variable_pronostico}',
-                            xaxis_title='Fecha',
-                            yaxis_title=variable_pronostico,
-                            height=400,
-                            hovermode='x unified'
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Métricas
-                        st.success("✅ Modelo ETS ajustado exitosamente")
-                        col_a, col_b, col_c = st.columns(3)
-                        col_a.metric("RMSE", f"{rmse_ets:.4f}")
-                        col_b.metric("AIC", f"{aic_ets:.2f}")
-                        col_c.metric("BIC", f"{bic_ets:.2f}")
-                        
-                        # Tabla de pronósticos
-                        with st.expander("📋 Ver valores pronosticados"):
-                            df_forecast = pd.DataFrame({
-                                'Fecha': fechas_futuras,
-                                'Pronóstico': pronostico_ets.round(4)
-                            })
-                            st.dataframe(df_forecast, use_container_width=True, hide_index=True)
-                        
-                        st.session_state.puntos_macro += 10
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error al ajustar ETS: {str(e)}")
-                        st.info("💡 El modelo ETS requiere al menos 2 años de datos para capturar estacionalidad.")
-        
-        # ============================================================
-        # COMPARACIÓN DE MODELOS
-        # ============================================================
-        
-        if 'arima_resultado' in st.session_state and 'ets_resultado' in st.session_state:
-            st.divider()
-            st.subheader("🏆 Comparación de Modelos")
-            
-            arima_res = st.session_state.arima_resultado
-            ets_res = st.session_state.ets_resultado
-            
-            # Tabla comparativa
-            df_comparacion = pd.DataFrame({
-                'Modelo': ['Auto-ARIMA', 'ETS'],
-                'RMSE': [arima_res['rmse'], ets_res['rmse']],
-                'AIC': [arima_res['aic'], ets_res['aic']],
-                'BIC': [arima_res['bic'], ets_res['bic']]
-            })
-            
-            st.dataframe(df_comparacion, use_container_width=True, hide_index=True)
-            
-            # Determinar mejor modelo
-            mejor_rmse = 'Auto-ARIMA' if arima_res['rmse'] < ets_res['rmse'] else 'ETS'
-            mejor_aic = 'Auto-ARIMA' if arima_res['aic'] < ets_res['aic'] else 'ETS'
-            mejor_bic = 'Auto-ARIMA' if arima_res['bic'] < ets_res['bic'] else 'ETS'
-            
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Mejor RMSE", mejor_rmse, "↓" if mejor_rmse == 'Auto-ARIMA' else "↑")
-            col2.metric("Mejor AIC", mejor_aic, "↓" if mejor_aic == 'Auto-ARIMA' else "↑")
-            col3.metric("Mejor BIC", mejor_bic, "↓" if mejor_bic == 'Auto-ARIMA' else "↑")
-            
-            st.info("""
-            📚 **Guía de Selección:**
-            - **RMSE (Root Mean Square Error):** Mide el error de predicción. Menor es mejor.
-            - **AIC (Akaike Information Criterion):** Balance entre ajuste y complejidad. Menor es mejor.
-            - **BIC (Bayesian Information Criterion):** Similar al AIC pero penaliza más la complejidad. Menor es mejor.
-            
-            💡 **Recomendación:** Si los tres criterios favorecen el mismo modelo, ese es tu mejor opción. 
-            Si hay discrepancias, prioriza el RMSE para precisión de pronóstico.
-            """)
-            
-            # Pregunta al estudiante
-            st.markdown("---")
-            st.markdown("### 🎯 Decisión del Estudiante")
-            
-            modelo_elegido = st.radio(
-                "Basándote en las métricas, ¿qué modelo elegirías para este pronóstico?",
-                options=['Auto-ARIMA', 'ETS'],
-                key="radio_modelo_elegido"
-            )
-            
-            if st.button("✅ Confirmar Elección", key="btn_confirmar_modelo"):
-                # Calcular votos
-                votos = [mejor_rmse, mejor_aic, mejor_bic]
-                modelo_mayoria = max(set(votos), key=votos.count)
-                
-                if modelo_elegido == modelo_mayoria:
-                    st.success(f"🎉 ¡Excelente elección! {modelo_elegido} tiene mejor desempeño en {votos.count(modelo_mayoria)}/3 métricas.")
-                    st.session_state.puntos_macro += 15
-                    st.balloons()
+        with col_p1:
+            tipo_pesos = st.radio("Asignación de pesos", ["Equitativo", "Manual"])
+            pesos = []
+            if tipo_pesos == "Equitativo":
+                pesos = np.array([1/len(activos_port)] * len(activos_port))
+                st.write("Pesos asignados automáticamente:")
+                for a, p in zip(activos_port, pesos):
+                    st.write(f"- {a}: {p:.2%}")
+            else:
+                st.write("Ingresa los pesos (deben sumar 1):")
+                pesos_input = []
+                for a in activos_port:
+                    p = st.number_input(f"Peso para {a}", min_value=0.0, max_value=1.0, value=1.0/len(activos_port), step=0.05)
+                    pesos_input.append(p)
+                pesos = np.array(pesos_input)
+                total_pesos = sum(pesos)
+                if not np.isclose(total_pesos, 1.0):
+                    st.error(f"⚠️ Los pesos suman {total_pesos:.2f}, deben sumar 1.0")
                 else:
-                    st.warning(f"🤔 {modelo_mayoria} tiene mejor desempeño en {votos.count(modelo_mayoria)}/3 métricas, pero tu elección también es válida según el contexto.")
-                    st.session_state.puntos_macro += 10
+                    st.success("Pesos correctos.")
+
+        if np.isclose(sum(pesos), 1.0) or tipo_pesos == "Equitativo":
+            rets_port = rendimientos[activos_port]
+            
+            # Cálculo
+            var_port_95, sigma_port, cov_mat = calcular_var_portafolio(rets_port, pesos, 0.95)
+            var_port_99, _, _ = calcular_var_portafolio(rets_port, pesos, 0.99)
+            
+            with col_p2:
+                st.subheader("Resultados del Portafolio")
+                col_res1, col_res2 = st.columns(2)
+                col_res1.metric("VaR 95% (1 día)", f"{var_port_95:.2%}")
+                col_res2.metric("VaR 99% (1 día)", f"{var_port_99:.2%}")
+                st.metric("Volatilidad Anualizada (aprox)", f"{sigma_port * np.sqrt(252):.2%}")
                 
-                st.markdown(f"""
-                **Análisis de tu elección:**
-                - Elegiste: **{modelo_elegido}**
-                - RMSE de {modelo_elegido}: {arima_res['rmse'] if modelo_elegido == 'Auto-ARIMA' else ets_res['rmse']:.4f}
-                - AIC de {modelo_elegido}: {arima_res['aic'] if modelo_elegido == 'Auto-ARIMA' else ets_res['aic']:.2f}
-                - BIC de {modelo_elegido}: {arima_res['bic'] if modelo_elegido == 'Auto-ARIMA' else ets_res['bic']:.2f}
-                """)
+                # Matriz de Correlación
+                st.subheader("Matriz de Correlaciones")
+                corr_matrix = rets_port.corr()
+                fig_corr = px.imshow(corr_matrix, text_auto=True, color_continuous_scale='RdBu_r', zmin=-1, zmax=1)
+                st.plotly_chart(fig_corr, use_container_width=True)
+
+            # Rolling VaR
+            st.subheader("Evolución del VaR del Portafolio (Rolling Window)")
+            window = st.slider("Ventana móvil (días)", 30, 500, 252)
+            
+            # Calculamos el retorno del portafolio histórico
+            portfolio_returns = (rets_port * pesos).sum(axis=1)
+            
+            # Rolling VaR
+            rolling_mean = portfolio_returns.rolling(window=window).mean()
+            rolling_std = portfolio_returns.rolling(window=window).std()
+            rolling_var_95 = rolling_mean + norm.ppf(0.05) * rolling_std
+            
+            fig_rolling = go.Figure()
+            fig_rolling.add_trace(go.Scatter(x=portfolio_returns.index, y=portfolio_returns*100, name="Retorno Diario", opacity=0.3))
+            fig_rolling.add_trace(go.Scatter(x=rolling_var_95.index, y=rolling_var_95*100, name=f"VaR 95% ({window} días)", line=dict(color='red')))
+            fig_rolling.update_layout(
+                title="Retornos del Portafolio vs VaR Histórico Móvil",
+                yaxis_title="Porcentaje (%)",
+                yaxis=dict(tickformat=".2f", ticksuffix="%")
+            )
+            st.plotly_chart(fig_rolling, use_container_width=True)
+
+# --- 5. BURBUJA INMOBILIARIA ---
+with tab5:
+    st.header("🏚️ Análisis de la Crisis Subprime (2007-2008)")
+    
+    periodo = st.radio("Selecciona el periodo de análisis:", 
+                       ["Pre-crisis (2004-2006)", "Crisis (2007-2009)", "Post-crisis (2010-2012)"],
+                       horizontal=True)
+    
+    if periodo == "Pre-crisis (2004-2006)":
+        p_start, p_end = "2004-01-01", "2006-12-31"
+    elif periodo == "Crisis (2007-2009)":
+        p_start, p_end = "2007-01-01", "2009-12-31"
+    else:
+        p_start, p_end = "2010-01-01", "2012-12-31"
         
-        st.divider()
-        st.success(f"🎯 Puntos en Riesgo Macroeconómico: {st.session_state.puntos_macro}")
+    st.markdown(f"**Analizando periodo:** {p_start} al {p_end}")
+    
+    # Filtrar datos por periodo
+    mask = (rendimientos.index >= p_start) & (rendimientos.index <= p_end)
+    rets_periodo = rendimientos.loc[mask]
+    
+    if rets_periodo.empty:
+        st.error("No hay datos suficientes en este periodo para los activos seleccionados.")
+    else:
+        col_c1, col_c2 = st.columns(2)
         
-    except FileNotFoundError:
-        st.error("❌ No se encontró el archivo 'Variables Macroeconómicas.xlsx'")
-        st.info("💡 Asegúrate de que el archivo esté en el mismo directorio que la aplicación.")
-    except Exception as e:
-        st.error(f"❌ Error al cargar datos: {str(e)}")
+        with col_c1:
+            st.subheader("Volatilidad por Activo")
+            vols = rets_periodo.std()
+            fig_vol = px.bar(vols, title="Desviación Estándar (Riesgo)", labels={'value': 'Volatilidad', 'index': 'Activo'})
+            st.plotly_chart(fig_vol, use_container_width=True)
+            
+        with col_c2:
+            st.subheader("Correlaciones en el Periodo")
+            corr_periodo = rets_periodo.corr()
+            fig_corr_p = px.imshow(corr_periodo, text_auto=True, color_continuous_scale='RdBu_r', zmin=-1, zmax=1)
+            st.plotly_chart(fig_corr_p, use_container_width=True)
+            
+        st.subheader("Observaciones Clave")
+        st.info("""
+        **Lo que debes observar:**
+        1.  **Aumento de Volatilidad:** Durante la crisis, las barras de volatilidad (especialmente en bancos y sector inmobiliario) deberían ser mucho más altas.
+        2.  **Aumento de Correlaciones:** En tiempos de pánico, "todo cae junto". Las correlaciones tienden a acercarse a 1, reduciendo el beneficio de la diversificación.
+        3.  **VaR más profundo:** El riesgo de pérdida extrema aumenta significativamente.
+        """)
 
-
-# ============================================================================
-# NAVEGACIÓN PRINCIPAL
-# ============================================================================
-
-def main():
-    # Crear pestañas
-    tab1, tab2, tab3 = st.tabs([
-        "🌐 Riesgo de Mercado",
-        "💼 Riesgo Financiero (Altman)",
-        "📈 Riesgo Macroeconómico"
-    ])
+# --- 6. INDICADORES AVANZADOS DE RIESGO ---
+with tab6:
+    st.header("🎯 Indicadores Avanzados de Riesgo")
     
-    with tab1:
-        tab_riesgo_mercado()
-    
-    with tab2:
-        tab_riesgo_financiero()
-    
-    with tab3:
-        tab_riesgo_macro()
-    
-    # Footer
-    st.markdown("---")
     st.markdown("""
-    <div style='text-align: center; color: gray;'>
-        <p>🎓 Laboratorio - Diplomado de mercado de valores y estrategias de inversión</p>
-        <p>Desarrollado por Bolsa de Valores Quito para el aprendizaje interactivo</p>
-    </div>
-    """, unsafe_allow_html=True)
+    Esta sección presenta indicadores cuantitativos avanzados para detectar **vulnerabilidad financiera** 
+    antes de que ocurra una crisis sistémica. Estos indicadores son especialmente útiles para:
+    - Anticipar períodos de alta volatilidad
+    - Identificar acumulación de riesgo sistémico
+    - Detectar anomalías en la distribución de rendimientos
+    """)
+    
+    # Configuración para indicadores avanzados
+    activos_ind = st.multiselect("Activos para análisis avanzado", tickers, default=tickers, key="ind_avanzados")
+    
+    if not activos_ind:
+        st.warning("Selecciona al menos un activo para el análisis.")
+    else:
+        # Configurar pesos del portafolio
+        pesos_ind = np.array([1/len(activos_ind)] * len(activos_ind))
+        rets_ind = rendimientos[activos_ind]
+        portfolio_returns_ind = (rets_ind * pesos_ind).sum(axis=1)
+        
+        # --- 1. ROLLING KURTOSIS ---
+        st.subheader("📊 1. Curtosis Rolling (Rolling Kurtosis)")
+        st.markdown("""
+        La **curtosis** mide el "grosor" de las colas de la distribución de rendimientos. 
+        Valores altos indican mayor probabilidad de eventos extremos (crashes o rallies).
+        """)
+        
+        ventana_kurt = st.slider("Ventana para curtosis (días)", 30, 120, 60, key="ventana_kurt")
+        kurtosis_roll = calcular_kurtosis_rolling(portfolio_returns_ind, ventana=ventana_kurt)
+        
+        # Gráfico de Kurtosis
+        fig_kurt = go.Figure()
+        fig_kurt.add_trace(go.Scatter(
+            x=kurtosis_roll.index, 
+            y=kurtosis_roll, 
+            name="Curtosis Rolling",
+            line=dict(color='purple', width=2)
+        ))
+        
+        # Líneas de referencia
+        fig_kurt.add_hline(y=3, line_dash="dash", line_color="green", annotation_text="Normal (3)")
+        fig_kurt.add_hline(y=5, line_dash="dash", line_color="yellow", annotation_text="Colas pesadas (5)")
+        fig_kurt.add_hline(y=10, line_dash="dash", line_color="orange", annotation_text="Alerta (10)")
+        fig_kurt.add_hline(y=15, line_dash="dash", line_color="red", annotation_text="Riesgo sistémico (15)")
+        
+        fig_kurt.update_layout(
+            title=f"Curtosis Rolling del Portafolio (ventana {ventana_kurt} días)",
+            xaxis_title="Fecha",
+            yaxis_title="Curtosis",
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig_kurt, use_container_width=True)
+        
+        # Interpretación actual
+        kurt_actual = kurtosis_roll.dropna().iloc[-1] if not kurtosis_roll.dropna().empty else 3
+        interpretacion, color = interpretar_kurtosis(kurt_actual)
+        
+        col_k1, col_k2, col_k3 = st.columns(3)
+        col_k1.metric("Curtosis Actual", f"{kurt_actual:.2f}")
+        col_k2.markdown(f"**Estado:** <span style='color:{color}; font-size:20px'>{interpretacion}</span>", unsafe_allow_html=True)
+        
+        with st.expander("📖 Guía de interpretación"):
+            st.markdown("""
+            - **≤ 3**: Distribución normal, riesgo moderado
+            - **4-5**: Comienzan a aparecer colas pesadas, mayor riesgo de eventos extremos
+            - **8-10**: ⚠️ ALERTA - Alta probabilidad de movimientos extremos
+            - **> 15**: 🚨 RIESGO SISTÉMICO INMINENTE - Probabilidad muy alta de crash
+            
+            Durante la crisis de 2008, la curtosis se disparó por encima de 15 en múltiples ocasiones.
+            """)
+        
+        # --- 2. VAR ROLLING ALERT ---
+        st.subheader("⚡ 2. VaR Rolling con Alerta Temprana")
+        st.markdown("""
+        El **VaR Rolling** muestra cómo evoluciona el riesgo a lo largo del tiempo. 
+        Cuando el VaR actual supera significativamente su promedio histórico, es señal de alerta.
+        """)
+        
+        ventana_var_roll = st.slider("Ventana para VaR (días)", 100, 500, 250, key="ventana_var")
+        var_rolling = calcular_var_rolling(portfolio_returns_ind, ventana=ventana_var_roll, nivel_confianza=0.95)
+        
+        # Calcular promedio de 2 años previos (504 días hábiles aprox)
+        var_promedio_2y = var_rolling.rolling(window=504).mean()
+        alerta_var = np.abs(var_rolling) > 2 * np.abs(var_promedio_2y)
+        
+        # Gráfico VaR Rolling
+        fig_var = go.Figure()
+        fig_var.add_trace(go.Scatter(
+            x=var_rolling.index, 
+            y=var_rolling * 100, 
+            name="VaR Rolling 95%",
+            line=dict(color='darkred', width=2)
+        ))
+        fig_var.add_trace(go.Scatter(
+            x=var_promedio_2y.index, 
+            y=var_promedio_2y * 100, 
+            name="Promedio 2 años",
+            line=dict(color='blue', width=1, dash='dot')
+        ))
+        
+        # Marcar zonas de alerta
+        alertas_fechas = var_rolling.index[alerta_var]
+        if len(alertas_fechas) > 0:
+            fig_var.add_trace(go.Scatter(
+                x=alertas_fechas,
+                y=(var_rolling[alerta_var] * 100),
+                mode='markers',
+                name='🚨 Alerta',
+                marker=dict(color='red', size=8, symbol='x')
+            ))
+        
+        fig_var.update_layout(
+            title=f"VaR Rolling 95% (ventana {ventana_var_roll} días)",
+            xaxis_title="Fecha",
+            yaxis_title="VaR (%)",
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig_var, use_container_width=True)
+        
+        # Verificar alerta actual
+        if not var_rolling.dropna().empty and not var_promedio_2y.dropna().empty:
+            var_actual = var_rolling.dropna().iloc[-1]
+            var_prom_actual = var_promedio_2y.dropna().iloc[-1]
+            
+            if np.abs(var_actual) > 2 * np.abs(var_prom_actual):
+                st.error(f"""
+                🚨 **ALERTA TEMPRANA ACTIVADA**
+                
+                El VaR actual ({var_actual:.2%}) supera el doble del promedio de los últimos 2 años ({var_prom_actual:.2%}).
+                Esto indica un aumento significativo del riesgo de mercado.
+                """)
+            else:
+                st.success("✅ VaR dentro de niveles normales")
+        
+        # --- 3. EWMA VOLATILITY ---
+        st.subheader("📈 3. Volatilidad EWMA (Exponentially Weighted)")
+        st.markdown("""
+        La **volatilidad EWMA** da más peso a los datos recientes, permitiendo detectar 
+        cambios en la volatilidad más rápidamente que las medias móviles simples.
+        
+        Fórmula: `σ²ₜ = λ × σ²ₜ₋₁ + (1-λ) × r²ₜ`
+        """)
+        
+        lambda_param = st.slider("Parámetro λ (decay factor)", 0.85, 0.98, 0.94, 0.01, key="lambda")
+        ewma_vol = calcular_ewma_volatilidad(portfolio_returns_ind, lambda_param=lambda_param)
+        
+        # Calcular promedio histórico y alerta (50% por encima)
+        ewma_promedio = ewma_vol.mean()
+        umbral_alerta = ewma_promedio * 1.5
+        alerta_ewma = ewma_vol > umbral_alerta
+        
+        # Gráfico EWMA
+        fig_ewma = go.Figure()
+        fig_ewma.add_trace(go.Scatter(
+            x=ewma_vol.index,
+            y=ewma_vol * 100,
+            name="Volatilidad EWMA",
+            line=dict(color='teal', width=2)
+        ))
+        fig_ewma.add_hline(
+            y=ewma_promedio * 100, 
+            line_dash="dash", 
+            line_color="blue", 
+            annotation_text=f"Promedio histórico ({ewma_promedio*100:.2f}%)"
+        )
+        fig_ewma.add_hline(
+            y=umbral_alerta * 100, 
+            line_dash="dash", 
+            line_color="red", 
+            annotation_text=f"Umbral alerta (+50%): {umbral_alerta*100:.2f}%"
+        )
+        
+        # Marcar zonas de alerta
+        alertas_ewma_fechas = ewma_vol.index[alerta_ewma]
+        if len(alertas_ewma_fechas) > 0:
+            fig_ewma.add_trace(go.Scatter(
+                x=alertas_ewma_fechas,
+                y=(ewma_vol[alerta_ewma] * 100),
+                mode='markers',
+                name='⚠️ Alerta alta volatilidad',
+                marker=dict(color='red', size=6)
+            ))
+        
+        fig_ewma.update_layout(
+            title=f"Volatilidad EWMA (λ={lambda_param})",
+            xaxis_title="Fecha",
+            yaxis_title="Volatilidad (%)",
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig_ewma, use_container_width=True)
+        
+        # Métricas y alerta
+        if not ewma_vol.dropna().empty:
+            ewma_actual = ewma_vol.dropna().iloc[-1]
+            
+            col_ew1, col_ew2, col_ew3 = st.columns(3)
+            col_ew1.metric("Volatilidad EWMA Actual", f"{ewma_actual*100:.2f}%")
+            col_ew2.metric("Promedio Histórico", f"{ewma_promedio*100:.2f}%")
+            col_ew3.metric("Umbral Alerta", f"{umbral_alerta*100:.2f}%")
+            
+            if ewma_actual > umbral_alerta:
+                st.warning(f"""
+                ⚠️ **ALERTA DE VOLATILIDAD**
+                
+                La volatilidad EWMA actual ({ewma_actual*100:.2f}%) supera en más del 50% 
+                su promedio histórico. Esto indica un régimen de alta volatilidad.
+                """)
+            else:
+                st.info("✅ Volatilidad dentro de rangos normales")
+        
+        with st.expander("📖 Acerca de EWMA"):
+            st.markdown(f"""
+            **Parámetro λ = {lambda_param}**
+            - λ alto (0.94-0.97): Más peso a historia reciente, responde lento
+            - λ bajo (0.85-0.90): Reacciona rápido a cambios de volatilidad
+            
+            RiskMetrics™ de JP Morgan recomienda λ=0.94 para datos diarios.
+            
+            **Ventajas de EWMA:**
+            - Detecta cambios de régimen de volatilidad más rápido
+            - No requiere ventana fija como rolling std
+            - Usado en modelos de riesgo profesionales (GARCH, etc.)
+            """)
 
+# --- 7. ACTIVIDAD GRUPAL ---
+with tab7:
+    st.header("📝 Actividad Grupal")
+    
+    # Solicitar código de acceso
+    codigo = st.text_input("Ingresa el código para ver la actividad:", type="password")
+    
+    if codigo == "datos2025":
+        # Mostrar contenido completo de la actividad
+        st.markdown("""
+# Actividad Grupal: Detectores de Crisis con VaR, Curtosis y EWMA
 
-if __name__ == "__main__":
-    main()
+Trabajo en grupos de 3 a 4 personas utilizando esta misma aplicación de Streamlit.
+
+## Configuración inicial en la App
+
+Configuren la app de la siguiente manera:
+
+1. Activos seleccionados:
+   - SPY
+   - VNQ
+   - BAC
+   - JPM
+
+2. Frecuencia: Diaria  
+3. Tipo de rendimientos: Logarítmicos  
+4. Rango de fechas: desde 2004 hasta 2025  
+
+5. Parámetros iniciales:
+   - Ventana de curtosis: 60 días
+   - Ventana del VaR rolling: 250 días
+   - Parámetro lambda (EWMA): 0.94
+   - Horizonte del VaR univariado: 1 día
+
+Asegúrense de que todos en el grupo trabajan con la misma configuración inicial.
+
+## Parte 1: Exploración con Sliders
+
+El objetivo de esta parte es entender cómo los parámetros que se controlan con los sliders
+afectan las señales de riesgo.
+
+A) Ventana de curtosis (por ejemplo, entre 30 y 120 días)
+
+- Cambien la ventana de curtosis a valores más pequeños y más grandes.
+- Observen cómo cambian los picos de curtosis en periodos como 2008, 2011, 2020 y 2025.
+- Respondan:
+  - ¿Con una ventana pequeña, la curtosis reacciona más rápido o más lento a las crisis?
+  - ¿Con una ventana grande, se suavizan demasiado las señales?
+
+B) Ventana del VaR rolling (por ejemplo, entre 50 y 360 días)
+
+- Modifiquen la ventana del VaR rolling.
+- Observen cómo cambia la forma de la serie de VaR a lo largo del tiempo.
+- Respondan:
+  - ¿Con ventanas cortas aparecen más "falsas alarmas"?
+  - ¿Con ventanas largas se pierde detalle de ciertos episodios de riesgo?
+
+C) Parámetro lambda de EWMA (por ejemplo, entre 0.90 y 0.99)
+
+- Cambien el valor de lambda y observen la volatilidad EWMA.
+- Respondan:
+  - ¿Qué ocurre cuando lambda es más bajo (por ejemplo 0.90)?
+  - ¿Qué ocurre cuando lambda es más alto (por ejemplo 0.99)?
+  - ¿Con qué lambda sienten que mejor se identifican los periodos de tensión fuerte
+    sin generar demasiadas falsas alarmas?
+
+D) Horizonte del VaR univariado (por ejemplo, entre 1 y 10 días)
+
+- Cambien el horizonte del VaR univariado.
+- Comparen el VaR para 1 día, 5 días y 10 días.
+- Respondan:
+  - ¿Cómo cambia el tamaño del VaR cuando aumenta el horizonte?
+  - ¿Les parece razonable que el riesgo crezca aproximadamente con la raíz del tiempo?
+
+## Parte 2: Detección de Crisis
+
+Usando las gráficas de VaR, curtosis, volatilidad EWMA y correlaciones, respondan:
+
+1. Crisis financiera de 2008
+   - ¿En qué periodo ven un aumento fuerte en la curtosis?
+   - ¿Cuándo el VaR rolling se vuelve claramente más negativo?
+   - ¿En qué momento la volatilidad EWMA muestra un salto significativo?
+   - ¿Las correlaciones entre SPY, VNQ, BAC y JPM se acercan a valores altos
+     (por ejemplo, mayores a 0.8)?
+
+2. Crisis de deuda europea (alrededor de 2011)
+   - ¿Qué indicadores muestran señales claras en ese periodo?
+   - ¿Algún parámetro de los sliders ayuda a ver mejor esas señales?
+
+3. Episodio COVID-19 (alrededor de 2020)
+   - ¿Cómo reaccionan la curtosis, el VaR rolling y la volatilidad EWMA?
+   - ¿Cuál de estos indicadores parece reaccionar primero?
+
+4. Episodios recientes (alrededor de 2024 y 2025)
+   - ¿La app muestra señales de estrés financiero en esos años?
+   - ¿Esas señales se deben a caídas, subidas fuertes o movimientos extremos en ambos sentidos?
+
+## Parte 3: Informe del Grupo
+
+En una hoja o documento, el grupo debe resumir:
+
+1. Qué parámetro (ventana de curtosis, ventana de VaR rolling, lambda de EWMA u horizonte
+   del VaR) les pareció más útil para identificar cambios de régimen de riesgo.
+
+2. Qué combinación de parámetros recomendarían como configuración estándar en esta app
+   para analizar crisis financieras. Por ejemplo:
+   - Ventana de curtosis recomendada
+   - Ventana del VaR rolling recomendada
+   - Valor de lambda recomendado
+   - Horizonte de VaR recomendado
+
+3. Qué indicador consideran más adelantado para detectar tensión en el mercado:
+   - Curtosis (colas pesadas)
+   - Volatilidad EWMA (aceleración de la volatilidad)
+   - VaR rolling (fragilidad del portafolio)
+   - Correlaciones entre activos (pérdida de diversificación)
+
+4. Si hubieran estado en un comité de riesgos antes de la crisis de 2008, ¿con la evidencia
+   de estos indicadores habrían recomendado tomar alguna acción preventiva? Expliquen cuál.
+
+## Parte 4: Puesta en Común
+
+Cada grupo debe estar preparado para compartir brevemente:
+
+- La combinación de parámetros que eligieron como recomendada.
+- El indicador que consideraron más relevante.
+- Una idea clave que hayan aprendido sobre cómo se manifiesta una crisis financiera
+  en estos indicadores cuantitativos.
+        """)
+        
+        # Botón de descarga de datos
+        st.markdown("---")
+        st.subheader("Descarga de Datos")
+        st.markdown("Si deseas realizar tu propio análisis en Excel o Python, puedes descargar los datos procesados aquí:")
+        
+        csv = rendimientos.to_csv().encode('utf-8')
+        st.download_button(
+            label="📥 Descargar Rendimientos (CSV)",
+            data=csv,
+            file_name='rendimientos_var_app.csv',
+            mime='text/csv',
+        )
+    elif codigo == "":
+        st.info("Ingresa el código proporcionado por el profesor para ver la actividad.")
+    else:
+        st.error("Código incorrecto. Ingresa el código proporcionado por el profesor para ver la actividad.")
+

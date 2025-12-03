@@ -1,159 +1,180 @@
-# 🎓 Laboratorio de Riesgos – Universidad del Azuay
+# 📉 Análisis de Value at Risk (VaR) y Crisis Financiera 2008
 
-Aplicación web interactiva desarrollada con Streamlit para el aprendizaje didáctico sobre gestión de riesgos financieros.
+Aplicación educativa interactiva desarrollada con Streamlit para el análisis de riesgo financiero mediante Value at Risk (VaR) y el estudio de la burbuja inmobiliaria de 2007-2008.
 
-## 📋 Descripción
+## 🎯 Características
 
-Esta aplicación educativa tipo juego está diseñada para que estudiantes aprendan sobre tres tipos principales de riesgo:
+### Análisis de Datos
+- **Descarga automática de datos** desde Yahoo Finance
+- **Múltiples activos**: SPY, VNQ, BAC, JPM, C, GS, XLF, IYR, y los Magníficos 7 (AAPL, MSFT, GOOGL, AMZN, NVDA, TSLA, META)
+- **Frecuencias ajustables**: Diaria, Semanal, Mensual
+- **Rendimientos**: Logarítmicos y Simples
 
-1. **Riesgo de Mercado**: Comprende la volatilidad de activos financieros y el impacto de shocks de mercado
-2. **Riesgo Financiero**: Utiliza el modelo Altman Z'-Score para evaluar el riesgo de quiebra empresarial
-3. **Riesgo Macroeconómico**: Analiza cómo las variables macroeconómicas afectan las decisiones financieras
+### Módulos de Análisis
 
-## 🚀 Instalación
+#### 1. VaR Univariado
+- Cálculo paramétrico (distribución normal)
+- Cálculo histórico
+- Horizontes temporales configurables
+- Visualización de distribuciones
 
-### Requisitos previos
+#### 2. VaR de Portafolio
+- Método de varianzas-covarianzas
+- Pesos personalizables o equitativos
+- Matriz de correlaciones
+- VaR Rolling con ventana móvil
+
+#### 3. Análisis de Crisis
+- Comparación por periodos (Pre-crisis, Crisis, Post-crisis)
+- Análisis de volatilidad
+- Evolución de correlaciones
+
+#### 4. Indicadores Avanzados de Riesgo
+- **Curtosis Rolling**: Detección de colas pesadas y eventos extremos
+- **VaR Rolling con Alertas**: Sistema de alerta temprana
+- **Volatilidad EWMA**: Modelo exponencialmente ponderado (RiskMetrics)
+
+## 🚀 Instalación Local
+
+### Requisitos Previos
 - Python 3.8 o superior
-- pip (gestor de paquetes de Python)
+- pip
 
-### Pasos de instalación
+### Pasos de Instalación
 
-1. **Clona o descarga este repositorio**
+1. **Clonar o descargar el repositorio**
+```bash
+cd var_app
+```
 
-2. **Abre una terminal en la carpeta del proyecto**
+2. **Crear un entorno virtual (recomendado)**
+```bash
+python -m venv .venv
+```
 
-3. **Instala las dependencias:**
+3. **Activar el entorno virtual**
+- Windows:
+```bash
+.venv\Scripts\activate
+```
+- Linux/Mac:
+```bash
+source .venv/bin/activate
+```
+
+4. **Instalar dependencias**
 ```bash
 pip install -r requirements.txt
 ```
 
-## ▶️ Cómo ejecutar la aplicación
-
-1. Abre una terminal en la carpeta del proyecto
-
-2. Ejecuta el siguiente comando:
+5. **Ejecutar la aplicación**
 ```bash
 streamlit run app.py
 ```
 
-3. La aplicación se abrirá automáticamente en tu navegador (generalmente en `http://localhost:8501`)
+La aplicación se abrirá automáticamente en tu navegador en `http://localhost:8501`
 
-## 📚 Módulos de la Aplicación
+## ☁️ Despliegue en Streamlit Cloud
 
-### 🌐 Riesgo de Mercado
+### Opción 1: Desde GitHub
 
-**Juego 1: Ordena los Activos por Volatilidad**
-- Analiza gráficos de precios de diferentes activos
-- Ordena los activos de menor a mayor riesgo basándote en su comportamiento
-- Aprende sobre desviación estándar y volatilidad anualizada
+1. **Subir el código a GitHub**
+   - Crea un repositorio en GitHub
+   - Sube los archivos `app.py` y `requirements.txt`
 
-**Juego 2: Shock de Mercado**
-- Simula caídas del mercado
-- Observa el impacto en tu inversión
-- Comprende la importancia de la diversificación
+2. **Conectar con Streamlit Cloud**
+   - Ve a [share.streamlit.io](https://share.streamlit.io)
+   - Inicia sesión con tu cuenta de GitHub
+   - Haz clic en "New app"
+   - Selecciona tu repositorio, rama y archivo `app.py`
+   - Haz clic en "Deploy"
 
-### 💼 Riesgo Financiero (Altman Z-Score)
+### Opción 2: Despliegue Directo
 
-**Calculadora de Z-Score**
-- Ingresa los ratios financieros de una empresa:
-  - X1: Capital de trabajo / Total activos
-  - X2: Utilidades retenidas / Total activos
-  - X3: EBIT / Total activos
-  - X4: Patrimonio / Total pasivos
-- Calcula el Z'-Score y determina la zona de riesgo
+1. Ve a [share.streamlit.io](https://share.streamlit.io)
+2. Sigue las instrucciones para conectar tu repositorio
+3. Streamlit detectará automáticamente el `requirements.txt`
+4. La app estará disponible en una URL pública
 
-**Juego 1: Encuentra el Ratio Problemático**
-- Identifica cuál ratio está afectando negativamente la salud financiera
+## 📚 Uso Educativo
 
-**Juego 2: Propón la Solución Correcta**
-- Elige estrategias adecuadas para mejorar el ratio crítico
-- Aprende sobre reestructuración financiera
+Esta aplicación está diseñada para estudiantes de finanzas y economía que desean:
 
-**Interpretación del Z-Score:**
-- Z' > 2.6: Empresa saludable (zona segura 🟢)
-- 1.1 ≤ Z' ≤ 2.6: Zona gris (zona de alerta 🟡)
-- Z' < 1.1: Alto riesgo de quiebra (zona crítica 🔴)
+- Entender el concepto de Value at Risk
+- Analizar el comportamiento de mercados durante crisis
+- Explorar indicadores cuantitativos de riesgo
+- Aprender sobre diversificación de portafolios
+- Estudiar la crisis financiera de 2007-2008
 
-### 📈 Riesgo Macroeconómico
+## 📊 Activos Disponibles
 
-**Requisitos:**
-- Archivo Excel (.xlsx) con columnas:
-  - `fecha`: Fecha de la observación
-  - `inflacion`: Tasa de inflación (%)
-  - `tasa_activa`: Tasa de interés activa de referencia (%)
-  - `tasa_pasiva`: Tasa de interés pasiva de referencia (%)
+### ETFs e Índices
+- **SPY**: S&P 500 ETF
+- **VNQ**: Real Estate ETF (Sector Inmobiliario)
+- **XLF**: Financial Sector ETF
+- **IYR**: iShares U.S. Real Estate ETF
 
-**Dinámica 1: Impacto Macroeconómico en el Z-Score**
-- Analiza cómo el entorno económico afecta la salud financiera empresarial
-- Predice el comportamiento del Z-Score según condiciones macro
+### Bancos
+- **BAC**: Bank of America
+- **JPM**: JP Morgan Chase
+- **C**: Citigroup
+- **GS**: Goldman Sachs
 
-**Dinámica 2: Decisiones de Inversión y Financiamiento**
-- Toma decisiones como inversor, empresario y analista bancario
-- Evalúa la viabilidad de:
-  - Inversiones en depósitos a plazo
-  - Endeudamiento empresarial
-  - Estrategias de colocación de crédito
-
-## 🎯 Sistema de Puntuación
-
-La aplicación incluye un sistema de gamificación con puntos y niveles:
-
-- **0-30 puntos**: 🌱 Aprendiz de Riesgo
-- **31-60 puntos**: 📈 Analista Junior
-- **61-90 puntos**: ⭐ Analista Senior
-- **91+ puntos**: 🏆 Chief Risk Officer
-
-Los puntos se ganan al:
-- Completar juegos correctamente
-- Tomar decisiones acertadas
-- Identificar correctamente riesgos y soluciones
-
-## 📊 Ejemplo de Archivo Excel para Riesgo Macroeconómico
-
-```excel
-fecha         | inflacion | tasa_activa | tasa_pasiva
---------------|-----------|-------------|-------------
-2020-01-01    | 2.5       | 9.5         | 5.2
-2020-02-01    | 2.7       | 9.8         | 5.3
-2020-03-01    | 3.1       | 10.2        | 5.5
-...
-```
+### Magníficos 7 (Tech)
+- **AAPL**: Apple
+- **MSFT**: Microsoft
+- **GOOGL**: Google (Alphabet)
+- **AMZN**: Amazon
+- **NVDA**: NVIDIA
+- **TSLA**: Tesla
+- **META**: Meta (Facebook)
 
 ## 🛠️ Tecnologías Utilizadas
 
-- **Streamlit**: Framework para aplicaciones web en Python
-- **yfinance**: Descarga de datos financieros
+- **Streamlit**: Framework de aplicación web
 - **pandas**: Manipulación de datos
 - **numpy**: Cálculos numéricos
+- **yfinance**: Descarga de datos financieros
 - **plotly**: Visualizaciones interactivas
-- **openpyxl**: Lectura de archivos Excel
+- **scipy**: Funciones estadísticas
 
-## 📝 Notas Importantes
+## 📖 Estructura del Proyecto
 
-1. **Conexión a Internet**: Se requiere para descargar datos de mercado en tiempo real con yfinance
+```
+var_app/
+│
+├── app.py              # Aplicación principal
+├── requirements.txt    # Dependencias
+├── README.md          # Este archivo
+└── .venv/             # Entorno virtual (no subir a git)
+```
 
-2. **Datos Macroeconómicos**: Debes preparar tu propio archivo Excel con datos históricos de inflación y tasas de interés
+## 🎓 Créditos
 
-3. **Ratios Financieros**: Los ratios del Z-Score deben calcularse previamente desde los estados financieros de la empresa
+Desarrollado como material educativo para el **Diplomado en Mercado de Valores** de la Universidad del Azuay.
 
-4. **Persistencia de Datos**: Los puntos y el progreso se mantienen durante la sesión, pero se reinician al cerrar la aplicación
+## 📝 Licencia
 
-## 🎓 Uso Educativo
+Este proyecto es de uso educativo. Siéntete libre de usarlo y modificarlo para fines académicos.
 
-Esta aplicación está diseñada para:
-- Cursos de finanzas corporativas
-- Diplomados en mercado de valores
-- Capacitación en gestión de riesgos
-- Autoaprendizaje de conceptos financieros
+## 🤝 Contribuciones
 
-## 📧 Soporte
+Las sugerencias y mejoras son bienvenidas. Para contribuir:
 
-Para preguntas o sugerencias sobre la aplicación, contacta al departamento académico de la Universidad del Azuay.
+1. Fork el proyecto
+2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
+3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Push a la rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
 
-## 📄 Licencia
+## ⚠️ Disclaimer
 
-Desarrollado para fines educativos - Universidad del Azuay © 2025
+Esta aplicación es solo para fines educativos. No constituye asesoramiento financiero. Los datos históricos no garantizan resultados futuros. Consulta siempre con un profesional financiero antes de tomar decisiones de inversión.
+
+## 📧 Contacto
+
+Para preguntas o soporte sobre la aplicación, contacta al repositorio del proyecto.
 
 ---
 
-¡Disfruta aprendiendo sobre gestión de riesgos! 🎓📊
+**¡Disfruta explorando el mundo del análisis de riesgo financiero! 📈📉**
